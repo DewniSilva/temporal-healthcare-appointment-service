@@ -1,0 +1,101 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  PATIENT
+  DOCTOR
+  ADMIN
+}
+
+enum AppointmentStatus {
+  PENDING
+  BOOKED
+  CONFIRMED
+  CANCELLED
+  COMPLETED
+}
+
+enum NotificationType {
+  BOOKING_CONFIRMATION
+  APPOINTMENT_REMINDER
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+model User {
+  id           String   @id
+  email        String   @unique
+  passwordHash String
+  role         UserRole
+  patient      Patient?
+  doctor       Doctor?
+  createdAt    DateTime @default(now())
+}
+
+model Patient {
+  id           String        @id
+  displayName  String
+  userId       String        @unique
+  user         User          @relation(fields: [userId], references: [id])
+  appointments Appointment[]
+}
+
+model Doctor {
+  id           String        @id
+  displayName  String
+  userId       String        @unique
+  user         User          @relation(fields: [userId], references: [id])
+  appointments Appointment[]
+  reservations SlotReservation[]
+}
+
+model Appointment {
+  id              String            @id
+  patientId       String
+  doctorId        String
+  appointmentTime DateTime
+  status          AppointmentStatus @default(PENDING)
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  patient         Patient           @relation(fields: [patientId], references: [id])
+  doctor          Doctor            @relation(fields: [doctorId], references: [id])
+  notifications   Notification[]
+
+  @@index([patientId])
+  @@index([appointmentTime])
+  @@index([status])
+}
+
+model SlotReservation {
+  appointmentId   String   @id
+  doctorId        String
+  appointmentTime DateTime
+  createdAt       DateTime @default(now())
+  doctor          Doctor   @relation(fields: [doctorId], references: [id])
+
+  // This is the database-level race protection for concurrent workers.
+  @@unique([doctorId, appointmentTime])
+}
+
+model Notification {
+  id            String             @id @default(cuid())
+  appointmentId String
+  type          NotificationType
+  status        NotificationStatus @default(PENDING)
+  sentAt        DateTime?
+  createdAt     DateTime           @default(now())
+  appointment   Appointment        @relation(fields: [appointmentId], references: [id])
+
+  // One logical notification per appointment and purpose makes retries idempotent.
+  @@unique([appointmentId, type])
+}

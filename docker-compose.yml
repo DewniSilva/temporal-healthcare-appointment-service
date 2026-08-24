@@ -1,0 +1,92 @@
+name: temporal-healthcare-demo
+
+services:
+  postgres:
+    image: postgres:16.10-alpine
+    environment:
+      POSTGRES_USER: temporal
+      POSTGRES_PASSWORD: local_temporal_password
+      POSTGRES_DB: postgres
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/10-app.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U temporal -d postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  temporal:
+    image: temporalio/auto-setup:1.27.2
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DB: postgres12
+      DB_PORT: 5432
+      POSTGRES_USER: temporal
+      POSTGRES_PWD: local_temporal_password
+      POSTGRES_SEEDS: postgres
+      DYNAMIC_CONFIG_FILE_PATH: config/dynamicconfig/docker.yaml
+    healthcheck:
+      test: ["CMD", "temporal", "operator", "cluster", "health", "--address", "temporal:7233"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+
+  temporal-ui:
+    image: temporalio/ui:2.34.0
+    depends_on:
+      temporal:
+        condition: service_healthy
+    environment:
+      TEMPORAL_ADDRESS: temporal:7233
+      TEMPORAL_CORS_ORIGINS: http://localhost:3000
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+
+  backend:
+    build: .
+    depends_on:
+      postgres:
+        condition: service_healthy
+      temporal:
+        condition: service_healthy
+    environment: &app-environment
+      DATABASE_URL: postgresql://healthcare_app:local_app_password@postgres:5432/healthcare?schema=public
+      TEMPORAL_ADDRESS: temporal:7233
+      TEMPORAL_NAMESPACE: default
+      TEMPORAL_TASK_QUEUE: healthcare-appointments
+      JWT_SECRET: ${JWT_SECRET:-local-demo-secret-change-before-production-123456}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-1h}
+      PORT: 3000
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3000}
+      REMINDER_LEAD_TIME_SECONDS: ${REMINDER_LEAD_TIME_SECONDS:-30}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      DEMO_FAILURE_MODE: ${DEMO_FAILURE_MODE:-none}
+    command: ["sh", "-c", "npx prisma migrate deploy && npx prisma db seed && node dist/src/backend/server.js"]
+    ports:
+      - "3000:3000"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+
+  worker:
+    build: .
+    depends_on:
+      backend:
+        condition: service_healthy
+      temporal:
+        condition: service_healthy
+    environment: *app-environment
+    command: ["node", "dist/src/worker/worker.js"]
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
