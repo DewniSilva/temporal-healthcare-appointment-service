@@ -49,20 +49,27 @@ export function BookingPage() {
   const onSubmit = async (values: BookingFormValues) => {
     if (!idempotencyKeyRef.current) idempotencyKeyRef.current = generateIdempotencyKey();
 
-    const response = await mutation.mutateAsync({
-      input: {
-        patientId: values.patientId,
-        doctorId: values.doctorId,
-        appointmentTime: toIsoWithOffset(values.date, values.time)
-      },
-      idempotencyKey: idempotencyKeyRef.current
-    });
+    // Failures are surfaced through mutation.isError/mutation.error below;
+    // swallowing the rethrown rejection here just avoids an unhandled
+    // promise rejection, it does not hide the error from the user.
+    try {
+      const response = await mutation.mutateAsync({
+        input: {
+          patientId: values.patientId,
+          doctorId: values.doctorId,
+          appointmentTime: toIsoWithOffset(values.date, values.time)
+        },
+        idempotencyKey: idempotencyKeyRef.current
+      });
 
-    rememberAppointment(response.appointmentId);
-    setResult({
-      appointmentId: response.appointmentId,
-      wasAlreadyStarted: response.status === 'ALREADY_STARTED'
-    });
+      rememberAppointment(response.appointmentId);
+      setResult({
+        appointmentId: response.appointmentId,
+        wasAlreadyStarted: response.status === 'ALREADY_STARTED'
+      });
+    } catch {
+      // No-op: mutation state already reflects the failure for the UI.
+    }
   };
 
   const bookAnother = () => {

@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { ApiError } from '../../../lib/apiError';
 import { getAppointment, getWorkflowState } from '../api';
-import { isTerminalWorkflowStatus } from '../polling';
+import { defaultBackoff, isTerminalWorkflowStatus, type BackoffOptions } from '../polling';
 import { usePolling } from './usePolling';
 import type { Appointment, AppointmentWorkflowState } from '../../../types/api';
 
@@ -18,13 +18,17 @@ export interface BookingProgress {
  * Drives the post-booking processing screen: first waits for the appointment
  * row to exist (a brief 404 window is expected while the Workflow runs), then
  * polls the reminder Workflow's state until it reaches a terminal status.
+ *
+ * `backoff` defaults to the production bounded-backoff schedule; tests pass a
+ * much faster one so they do not need to fight real or fake 1s+ timers.
  */
-export function useBookingProgress(appointmentId: string): BookingProgress {
+export function useBookingProgress(appointmentId: string, backoff: BackoffOptions = defaultBackoff): BookingProgress {
   const locate = usePolling<Appointment>({
     enabled: true,
     fetcher: (signal) => getAppointment(appointmentId, signal),
     isTerminal: () => true,
-    isExpectedNotReady: (error) => error instanceof ApiError && error.isNotFound
+    isExpectedNotReady: (error) => error instanceof ApiError && error.isNotFound,
+    backoff
   });
 
   const appointmentFound = locate.status === 'done';
@@ -33,7 +37,8 @@ export function useBookingProgress(appointmentId: string): BookingProgress {
     enabled: appointmentFound,
     fetcher: (signal) => getWorkflowState(appointmentId, signal),
     isTerminal: (state) => isTerminalWorkflowStatus(state.status),
-    isExpectedNotReady: (error) => error instanceof ApiError && error.isServiceUnavailable
+    isExpectedNotReady: (error) => error instanceof ApiError && error.isServiceUnavailable,
+    backoff
   });
 
   return useMemo<BookingProgress>(() => {

@@ -88,7 +88,7 @@ export function AppointmentActions({ appointment }: { appointment: Appointment }
         open={cancelDialogOpen}
         title="Cancel this appointment?"
         description="This will release the doctor's slot and cannot be undone."
-        confirmLabel="Cancel appointment"
+        confirmLabel="Yes, cancel appointment"
         cancelLabel="Keep appointment"
         isDestructive
         onConfirm={runCancel}

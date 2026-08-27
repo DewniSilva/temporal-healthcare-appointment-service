@@ -48,6 +48,12 @@ export function usePolling<T>({
   isTerminalRef.current = isTerminal;
   const isExpectedRef = useRef(isExpectedNotReady);
   isExpectedRef.current = isExpectedNotReady;
+  // Callers commonly pass fetcher/backoff as fresh literals each render (as
+  // BookingProcessingScreen and tests both do). Reading everything mutable
+  // through refs keeps `start` referentially stable, so the effect below
+  // does not restart the whole polling loop from scratch on every render.
+  const backoffRef = useRef(backoff);
+  backoffRef.current = backoff;
 
   const start = useCallback(() => {
     generationRef.current += 1;
@@ -57,6 +63,7 @@ export function usePolling<T>({
 
     const runAttempt = async (attempt: number): Promise<void> => {
       if (generation !== generationRef.current) return;
+      const currentBackoff = backoffRef.current;
       try {
         const data = await fetcherRef.current(controller.signal);
         if (generation !== generationRef.current) return;
@@ -65,18 +72,18 @@ export function usePolling<T>({
           setState({ data, status: 'done', attempt, error: null });
           return;
         }
-        if (attempt + 1 >= backoff.maxAttempts) {
+        if (attempt + 1 >= currentBackoff.maxAttempts) {
           setState({ data, status: 'exhausted', attempt: attempt + 1, error: null });
           return;
         }
         setState({ data, status: 'polling', attempt: attempt + 1, error: null });
-        window.setTimeout(() => void runAttempt(attempt + 1), delayForAttempt(attempt + 1, backoff));
+        window.setTimeout(() => void runAttempt(attempt + 1), delayForAttempt(attempt + 1, currentBackoff));
       } catch (error) {
         if (generation !== generationRef.current) return;
         if (error instanceof DOMException && error.name === 'AbortError') return;
 
         const expected = isExpectedRef.current?.(error) ?? false;
-        if (attempt + 1 >= backoff.maxAttempts) {
+        if (attempt + 1 >= currentBackoff.maxAttempts) {
           setState((prev) => ({ data: prev.data, status: 'exhausted', attempt: attempt + 1, error }));
           return;
         }
@@ -86,13 +93,13 @@ export function usePolling<T>({
           attempt: attempt + 1,
           error: expected ? null : error
         }));
-        window.setTimeout(() => void runAttempt(attempt + 1), delayForAttempt(attempt + 1, backoff));
+        window.setTimeout(() => void runAttempt(attempt + 1), delayForAttempt(attempt + 1, currentBackoff));
       }
     };
 
     void runAttempt(0);
     return () => controller.abort();
-  }, [backoff]);
+  }, []);
 
   useEffect(() => {
     if (!enabled) return;
