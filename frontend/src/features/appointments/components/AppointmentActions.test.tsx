@@ -19,7 +19,8 @@ const confirmedWorkflow: AppointmentWorkflowState = {
   status: 'CONFIRMED',
   reminderSent: true,
   confirmed: true,
-  cancelled: false
+  cancelled: false,
+  reminderAt: '2026-09-01T08:00:00Z'
 };
 
 function renderActions(role: 'PATIENT' | 'DOCTOR' | 'ADMIN', patientId?: string) {
@@ -96,7 +97,8 @@ describe('AppointmentActions', () => {
       status: 'CANCELLED',
       reminderSent: true,
       confirmed: false,
-      cancelled: true
+      cancelled: true,
+      reminderAt: '2026-09-01T08:00:00Z'
     });
 
     renderActions('PATIENT', 'patient-001');

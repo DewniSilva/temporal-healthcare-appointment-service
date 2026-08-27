@@ -21,7 +21,8 @@ const confirmedWorkflow: AppointmentWorkflowState = {
   status: 'CONFIRMED',
   reminderSent: true,
   confirmed: true,
-  cancelled: false
+  cancelled: false,
+  reminderAt: '2026-09-01T08:00:00Z'
 };
 
 describe('useBookingProgress', () => {
@@ -44,22 +45,29 @@ describe('useBookingProgress', () => {
     expect(attempt).toBe(3);
   });
 
-  it('polls the workflow after the appointment is found, staying orchestrating until terminal', async () => {
+  it('shows the result as soon as the workflow is queryable, without waiting for a terminal status', async () => {
     vi.spyOn(api, 'getAppointment').mockResolvedValue(appointment);
+    const scheduledWorkflow: AppointmentWorkflowState = {
+      status: 'SCHEDULED',
+      reminderSent: false,
+      confirmed: false,
+      cancelled: false,
+      reminderAt: '2026-09-05T18:00:00Z'
+    };
     let workflowAttempt = 0;
     vi.spyOn(api, 'getWorkflowState').mockImplementation(async () => {
       workflowAttempt += 1;
-      if (workflowAttempt < 2) return { status: 'WAITING_FOR_CONFIRMATION', reminderSent: true, confirmed: false, cancelled: false };
-      return confirmedWorkflow;
+      return scheduledWorkflow;
     });
 
     const { result } = renderHook(() => useBookingProgress('apt-1', fastBackoff));
 
-    // The intermediate 'orchestrating' phase can be too brief to reliably
-    // observe with a real-timer backoff this fast, so we only assert the
-    // eventual outcome plus proof that more than one workflow poll happened.
+    // A freshly booked appointment is durably scheduled up to a week out, so
+    // the initial booking screen must not keep polling until CONFIRMED; a
+    // single successful workflow read is enough to show the result.
     await waitFor(() => expect(result.current.phase).toBe('complete'));
-    expect(workflowAttempt).toBeGreaterThanOrEqual(2);
+    expect(result.current.workflow).toEqual(scheduledWorkflow);
+    expect(workflowAttempt).toBe(1);
   });
 
   it('stalls with a manual retry available when the appointment never shows up', async () => {

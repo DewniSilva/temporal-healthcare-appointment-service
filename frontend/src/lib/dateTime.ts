@@ -6,8 +6,20 @@ const dateTimeFormatter = new Intl.DateTimeFormat(undefined, {
 const dateFormatter = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' });
 const timeFormatter = new Intl.DateTimeFormat(undefined, { timeStyle: 'short' });
 
+// "September 5 at 8:00 PM" — used where the year is implied (near-term booking summaries).
+const monthDayTimeFormatter = new Intl.DateTimeFormat(undefined, {
+  month: 'long',
+  day: 'numeric',
+  hour: 'numeric',
+  minute: '2-digit'
+});
+
 export function formatDateTime(iso: string): string {
   return dateTimeFormatter.format(new Date(iso));
+}
+
+export function formatMonthDayTime(iso: string): string {
+  return monthDayTimeFormatter.format(new Date(iso)).replace(',', ' at');
 }
 
 export function formatDate(iso: string): string {

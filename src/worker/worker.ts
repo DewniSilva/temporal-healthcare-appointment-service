@@ -1,5 +1,6 @@
 import { NativeConnection, Worker } from '@temporalio/worker';
 import { activities } from './activities/appointment.activities';
+import { reconciliationActivities } from './activities/reconciliation.activities';
 import { getEnv } from '../shared/config/env';
 import { prisma } from '../shared/database/prisma';
 import { logger } from '../shared/logging/logger';
@@ -10,7 +11,11 @@ async function main(): Promise<void> {
   let lastError: unknown;
   for (let attempt = 1; attempt <= 10; attempt += 1) {
     try {
-      connection = await NativeConnection.connect({ address: env.TEMPORAL_ADDRESS });
+      connection = await NativeConnection.connect({
+        address: env.TEMPORAL_ADDRESS,
+        tls: env.TEMPORAL_API_KEY ? true : env.TEMPORAL_TLS,
+        apiKey: env.TEMPORAL_API_KEY
+      });
       break;
     } catch (error) {
       lastError = error;
@@ -25,7 +30,7 @@ async function main(): Promise<void> {
     namespace: env.TEMPORAL_NAMESPACE,
     taskQueue: env.TEMPORAL_TASK_QUEUE,
     workflowsPath: require.resolve('./workflows'),
-    activities,
+    activities: { ...activities, ...reconciliationActivities },
     maxConcurrentActivityTaskExecutions: 20,
     maxConcurrentWorkflowTaskExecutions: 50
   });

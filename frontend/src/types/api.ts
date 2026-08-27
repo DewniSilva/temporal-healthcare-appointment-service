@@ -33,6 +33,7 @@ export interface AppointmentWorkflowState {
   reminderSent: boolean;
   confirmed: boolean;
   cancelled: boolean;
+  reminderAt: string;
 }
 
 export interface StartAppointmentResponse {
@@ -50,6 +51,7 @@ export interface HealthResponse {
   status: 'ok';
   database: 'ready';
   temporalClient: 'ready';
+  redis: 'ready';
 }
 
 export interface CreateAppointmentRequest {

@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { ApiError } from '../../../lib/apiError';
 import { getAppointment, getWorkflowState } from '../api';
-import { defaultBackoff, isTerminalWorkflowStatus, type BackoffOptions } from '../polling';
+import { defaultBackoff, type BackoffOptions } from '../polling';
 import { usePolling } from './usePolling';
 import type { Appointment, AppointmentWorkflowState } from '../../../types/api';
 
@@ -17,7 +17,14 @@ export interface BookingProgress {
 /**
  * Drives the post-booking processing screen: first waits for the appointment
  * row to exist (a brief 404 window is expected while the Workflow runs), then
- * polls the reminder Workflow's state until it reaches a terminal status.
+ * waits for the reminder Workflow to become queryable at all.
+ *
+ * A freshly booked appointment can be up to a week away, and its Workflow
+ * durably waits that whole time in `SCHEDULED` before doing anything else.
+ * So unlike `useSignalPolling` (which waits for a confirm/cancel signal to
+ * resolve to a terminal status), this screen must not keep polling for a
+ * terminal status — the very first successful read of the Workflow's state
+ * is already the result worth showing ("booked, reminder scheduled").
  *
  * `backoff` defaults to the production bounded-backoff schedule; tests pass a
  * much faster one so they do not need to fight real or fake 1s+ timers.
@@ -36,7 +43,7 @@ export function useBookingProgress(appointmentId: string, backoff: BackoffOption
   const orchestrate = usePolling<AppointmentWorkflowState>({
     enabled: appointmentFound,
     fetcher: (signal) => getWorkflowState(appointmentId, signal),
-    isTerminal: (state) => isTerminalWorkflowStatus(state.status),
+    isTerminal: () => true,
     isExpectedNotReady: (error) => error instanceof ApiError && error.isServiceUnavailable,
     backoff
   });

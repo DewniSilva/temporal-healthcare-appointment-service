@@ -42,6 +42,12 @@ export function AppointmentDetailPage() {
 
   return (
     <div className="space-y-6">
+      {workflowQuery.data?.reminderSent && (
+        <Alert variant="success" title="Reminder sent">
+          A reminder notification for this appointment has been delivered.
+        </Alert>
+      )}
+
       <Card>
         <CardHeader
           title={<CopyableId value={appointment.id} label="Appointment ID" />}

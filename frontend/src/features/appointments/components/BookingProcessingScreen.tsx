@@ -1,11 +1,13 @@
 import { Link } from 'react-router-dom';
-import { CheckCircle2, RotateCw } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, RotateCw } from 'lucide-react';
 import { Card, CardHeader } from '../../../components/ui/Card';
 import { Alert } from '../../../components/ui/Alert';
 import { Button } from '../../../components/ui/Button';
 import { Spinner } from '../../../components/ui/Spinner';
 import { Timeline } from './Timeline';
 import { useBookingProgress } from '../hooks/useBookingProgress';
+import { formatMonthDayTime } from '../../../lib/dateTime';
+import { workflowStatusPresentation } from '../statusPresentation';
 
 interface BookingProcessingScreenProps {
   appointmentId: string;
@@ -45,9 +47,11 @@ export function BookingProcessingScreen({
         <Spinner label="Waiting for the booking workflow to progress..." />
       )}
 
-      {progress.phase === 'complete' && (
-        <Alert variant="success" title="Booking workflow reached a final state">
-          Review the timeline below, or open the full appointment details.
+      {progress.phase === 'complete' && progress.appointment && progress.workflow && (
+        <Alert variant="success" title="Appointment booked successfully">
+          <p>Appointment: {formatMonthDayTime(progress.appointment.appointmentTime)}</p>
+          <p>Reminder scheduled: {formatMonthDayTime(progress.workflow.reminderAt)}</p>
+          <p>Status: {workflowStatusPresentation[progress.workflow.status].label}</p>
         </Alert>
       )}
 
@@ -76,6 +80,15 @@ export function BookingProcessingScreen({
           >
             <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
             View appointment details
+          </Link>
+        )}
+        {progress.appointment && (
+          <Link
+            to="/dashboard"
+            className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
+          >
+            <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+            Back to dashboard
           </Link>
         )}
         <Button variant="ghost" onClick={onBookAnother}>

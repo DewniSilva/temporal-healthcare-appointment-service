@@ -10,7 +10,11 @@ export async function connectTemporal(maxAttempts = 10): Promise<Client> {
   let lastError: unknown;
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     try {
-      connection = await Connection.connect({ address: env.TEMPORAL_ADDRESS });
+      connection = await Connection.connect({
+        address: env.TEMPORAL_ADDRESS,
+        tls: env.TEMPORAL_API_KEY ? true : env.TEMPORAL_TLS,
+        apiKey: env.TEMPORAL_API_KEY
+      });
       client = new Client({ connection, namespace: env.TEMPORAL_NAMESPACE });
       return client;
     } catch (error) {

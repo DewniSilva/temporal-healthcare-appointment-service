@@ -8,7 +8,7 @@ const appointment = { id: 'apt-1', patientId: 'patient-001', doctorId: 'doctor-0
 
 describe('request validation and authorization', () => {
   it('accepts a future ISO appointment and rejects unexpected fields', () => {
-    const valid = { patientId: 'patient-001', doctorId: 'doctor-001', appointmentTime: new Date(Date.now() + 60_000).toISOString() };
+    const valid = { patientId: 'patient-001', doctorId: 'doctor-001', appointmentTime: '2099-01-01T10:20:00Z' };
     expect(createAppointmentSchema.parse(valid).patientId).toBe('patient-001');
     expect(() => createAppointmentSchema.parse({ ...valid, diagnosis: 'must not enter workflow history' })).toThrow();
   });
@@ -16,6 +16,13 @@ describe('request validation and authorization', () => {
   it('rejects malformed and past appointment input', () => {
     expect(() => createAppointmentSchema.parse({ patientId: '../patient', doctorId: 'doctor-001', appointmentTime: 'not-a-date' })).toThrow();
     expect(() => createAppointmentSchema.parse({ patientId: 'patient-001', doctorId: 'doctor-001', appointmentTime: new Date(0).toISOString() })).toThrow();
+  });
+
+  it('accepts only 20-minute wall-clock boundaries, including half-hour timezones', () => {
+    const base = { patientId: 'patient-001', doctorId: 'doctor-001' };
+    expect(() => createAppointmentSchema.parse({ ...base, appointmentTime: '2099-01-01T10:20:00+05:30' })).not.toThrow();
+    expect(() => createAppointmentSchema.parse({ ...base, appointmentTime: '2099-01-01T10:10:00+05:30' })).toThrow(/20-minute boundary/);
+    expect(() => createAppointmentSchema.parse({ ...base, appointmentTime: '2099-01-01T10:20:30+05:30' })).toThrow(/20-minute boundary/);
   });
 
   it('requires a valid idempotency key and derives stable caller-scoped IDs', () => {

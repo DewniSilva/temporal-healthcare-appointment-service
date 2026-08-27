@@ -34,7 +34,7 @@ The implemented business journey is deliberately narrow:
 11. Confirmation changes the appointment to `CONFIRMED`.
 12. Cancellation changes it to `CANCELLED` and releases the slot.
 
-The repository is a learning/demo system, not a complete hospital platform. It does not implement provider calendars, appointment duration, rescheduling, completion, clinical records, billing, token revocation, a real notification provider, a frontend, or full regulatory controls.
+The repository is a learning/demo system, not a complete hospital platform. It now models a fixed 20-minute appointment duration, but it does not implement provider working calendars, variable duration, rescheduling, completion, clinical records, billing, token revocation, or full regulatory controls.
 
 ## 3. High-level architecture
 
@@ -146,7 +146,7 @@ Express keeps the HTTP boundary small and transparent. Its middleware model fits
 
 ### 4.5 Why PostgreSQL and Prisma
 
-Appointments, users, doctors, and reservations are relational data with important uniqueness and foreign-key rules. PostgreSQL supplies atomic writes and database-level constraints, especially the unique `(doctorId, appointmentTime)` reservation rule that prevents concurrent double booking. Prisma supplies generated types, parameterized queries, migrations, narrow projections, and readable upsert/update operations.
+Appointments, users, doctors, and reservations are relational data with important uniqueness and foreign-key rules. PostgreSQL supplies atomic writes and database-level constraints: exact-start uniqueness plus a GiST exclusion constraint prevents concurrent overlapping 20-minute reservations for one doctor. Prisma supplies generated types, parameterized queries, migrations, narrow projections, and readable upsert/update operations.
 
 Temporal and PostgreSQL solve different problems. Temporal ensures that process steps resume; PostgreSQL decides whether a business invariant, such as unique slot ownership, is true at the moment of an atomic write.
 
@@ -202,7 +202,7 @@ erDiagram
 - Each `User` can link to at most one patient and at most one doctor record.
 - Appointment patient and doctor IDs are foreign keys.
 - `SlotReservation.appointmentId` is the primary key, making repeated reservation for the same appointment idempotent.
-- `(SlotReservation.doctorId, appointmentTime)` is unique, making a concurrent double booking impossible at the database boundary.
+- `(SlotReservation.doctorId, appointmentTime)` remains unique, while a customized PostgreSQL exclusion constraint rejects any overlapping protected 20-minute ranges for the same doctor.
 - `(Notification.appointmentId, type)` is unique, allowing one logical booking confirmation and one logical reminder per appointment.
 - Appointment indexes support lookup by patient, time, and status.
 
@@ -302,7 +302,7 @@ One consequence is that the idempotency key is bound only to the user, not to a 
 5. `sendBookingConfirmation`: logs and records one booking confirmation.
 6. `executeChild(appointmentReminderWorkflow)`: creates and waits for the reminder child workflow.
 
-The initial availability check improves diagnostics but does not provide concurrency safety by itself. The unique database constraint in step 3 is the final authority.
+The initial availability check improves diagnostics but does not provide concurrency safety by itself. The PostgreSQL exact-start and range-exclusion constraints in step 3 are the final authority.
 
 The parent uses `executeChild`, so it remains open until the reminder child completes. This preserves a clear parent/child execution tree in Temporal UI.
 
@@ -639,7 +639,7 @@ Important missing tests include real PostgreSQL integration tests, concurrent re
 - Reads may return not found briefly after a successful `202` because the workflow has not yet created the appointment row.
 - Workflow queries/signals may return not ready before the child starts.
 - There is no operation-status resource for booking failures before appointment creation.
-- No reschedule, completion, expiry/no-response, doctor decision, appointment duration, timezone policy, recurrence, or calendar availability model exists.
+- No reschedule, completion, expiry/no-response, doctor decision, variable appointment duration, timezone policy, recurrence, working-hours calendar, or blackout-period model exists. Appointment duration is currently fixed at 20 minutes.
 - Cancellation releases the slot; confirmation retains the reservation permanently because there is no completion/retention cleanup path.
 - `PENDING`, `COMPLETED`, notification `PENDING`, notification `FAILED`, and workflow contract states `BOOKING`/`FAILED` are not currently driven by the implementation.
 

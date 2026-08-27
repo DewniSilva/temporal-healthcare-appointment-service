@@ -22,11 +22,11 @@ export function PatientDashboard() {
 
   return (
     <div className="space-y-6">
-      <Card className="bg-primary-600 text-white">
+      <Card className="bg-primary-700 text-white">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h2 className="text-lg font-semibold">Welcome back</h2>
-            <p className="mt-1 text-sm text-primary-100">
+            <p className="mt-1 text-sm text-primary-50">
               Patient ID: <span className="font-mono">{user?.patientId}</span>
             </p>
           </div>

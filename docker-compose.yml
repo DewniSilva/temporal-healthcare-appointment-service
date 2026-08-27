@@ -36,6 +36,15 @@ services:
       retries: 30
     restart: unless-stopped
 
+  redis:
+    image: redis:7.4-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
   temporal-ui:
     image: temporalio/ui:2.34.0
     depends_on:
@@ -55,18 +64,30 @@ services:
         condition: service_healthy
       temporal:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     environment: &app-environment
       DATABASE_URL: postgresql://healthcare_app:local_app_password@postgres:5432/healthcare?schema=public
       TEMPORAL_ADDRESS: temporal:7233
       TEMPORAL_NAMESPACE: default
       TEMPORAL_TASK_QUEUE: healthcare-appointments
+      # Plaintext to the local Compose network; set TEMPORAL_TLS=true or
+      # TEMPORAL_API_KEY (e.g. for Temporal Cloud) for a real deployment.
+      TEMPORAL_TLS: ${TEMPORAL_TLS:-false}
+      TEMPORAL_API_KEY: ${TEMPORAL_API_KEY:-}
       JWT_SECRET: ${JWT_SECRET:-local-demo-secret-change-before-production-123456}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-1h}
       PORT: 3000
       CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3000}
-      REMINDER_LEAD_TIME_SECONDS: ${REMINDER_LEAD_TIME_SECONDS:-30}
+      REMINDER_LEAD_TIME_SECONDS: ${REMINDER_LEAD_TIME_SECONDS:-7200}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      RESEND_FROM_EMAIL: ${RESEND_FROM_EMAIL:-Healthcare Appointments <onboarding@resend.dev>}
+      REMINDER_EMAIL_TO: ${REMINDER_EMAIL_TO:-}
       LOG_LEVEL: ${LOG_LEVEL:-info}
       DEMO_FAILURE_MODE: ${DEMO_FAILURE_MODE:-none}
+      REDIS_URL: redis://redis:6379
+      RECONCILIATION_INTERVAL_MINUTES: ${RECONCILIATION_INTERVAL_MINUTES:-15}
+      ORPHANED_RESERVATION_GRACE_MINUTES: ${ORPHANED_RESERVATION_GRACE_MINUTES:-60}
     command: ["sh", "-c", "npx prisma migrate deploy && npx prisma db seed && node dist/src/backend/server.js"]
     ports:
       - "3000:3000"

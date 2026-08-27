@@ -11,6 +11,7 @@ import type { AuthenticatedUser } from '../auth/auth.service';
 import { assertCanAct, assertCanCreate, assertCanRead } from '../auth/authorization';
 import { logger } from '../../shared/logging/logger';
 import { appointmentIdForIdempotencyKey } from './idempotency';
+import { appointmentOverlapWindow } from '../../shared/appointmentSlots';
 
 export interface CreateAppointmentRequest { patientId: string; doctorId: string; appointmentTime: string; }
 
@@ -18,6 +19,16 @@ export async function startAppointment(input: CreateAppointmentRequest, user: Au
   assertCanCreate(user, input.patientId);
   const appointmentId = appointmentIdForIdempotencyKey(user.userId, idempotencyKey);
   const workflowId = bookingWorkflowId(appointmentId);
+  const overlapWindow = appointmentOverlapWindow(input.appointmentTime);
+  const occupied = await prisma.slotReservation.findFirst({
+    where: {
+      doctorId: input.doctorId,
+      appointmentId: { not: appointmentId },
+      appointmentTime: { gt: overlapWindow.after, lt: overlapWindow.before }
+    },
+    select: { appointmentId: true }
+  });
+  if (occupied) throw new AppError(409, 'DOCTOR_UNAVAILABLE', 'The requested 20-minute appointment slot is unavailable.');
   try {
     const handle = await temporalClient().workflow.start<AppointmentBookingWorkflow>('appointmentBookingWorkflow', {
       taskQueue: getEnv().TEMPORAL_TASK_QUEUE,

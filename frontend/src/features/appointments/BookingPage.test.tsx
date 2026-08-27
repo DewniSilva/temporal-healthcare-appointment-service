@@ -5,12 +5,14 @@ import { TestProviders, makeAuthContextValue, makeAuthUser } from '../../test/te
 import { ApiError } from '../../lib/apiError';
 import * as appointmentsApi from './api';
 
-function futureDateParts(hoursFromNow: number): { date: string; time: string } {
-  const future = new Date(Date.now() + hoursFromNow * 60 * 60 * 1000);
+// A fixed 10:00 AM keeps this inside the working-hours window regardless of
+// what time the test happens to run at; only the date needs to move forward.
+function futureDateParts(daysFromNow: number): { date: string; time: string } {
+  const future = new Date(Date.now() + daysFromNow * 24 * 60 * 60 * 1000);
   const pad = (n: number) => String(n).padStart(2, '0');
   return {
     date: `${future.getFullYear()}-${pad(future.getMonth() + 1)}-${pad(future.getDate())}`,
-    time: `${pad(future.getHours())}:${pad(future.getMinutes())}`
+    time: '10:00'
   };
 }
 
@@ -23,10 +25,10 @@ function renderBookingPage() {
 }
 
 async function fillValidForm() {
-  const { date, time } = futureDateParts(48);
+  const { date, time } = futureDateParts(2);
   fireEvent.change(screen.getByLabelText(/doctor id/i), { target: { value: 'doctor-001' } });
   fireEvent.change(screen.getByLabelText('Date'), { target: { value: date } });
-  fireEvent.change(screen.getByLabelText('Time'), { target: { value: time } });
+  fireEvent.change(screen.getByLabelText(/20-minute appointment slot/i), { target: { value: time } });
 }
 
 describe('BookingPage validation', () => {
@@ -34,7 +36,7 @@ describe('BookingPage validation', () => {
     renderBookingPage();
     fireEvent.change(screen.getByLabelText(/doctor id/i), { target: { value: 'doctor-001' } });
     fireEvent.change(screen.getByLabelText('Date'), { target: { value: '2020-01-01' } });
-    fireEvent.change(screen.getByLabelText('Time'), { target: { value: '09:00' } });
+    fireEvent.change(screen.getByLabelText(/20-minute appointment slot/i), { target: { value: '09:00' } });
     fireEvent.click(screen.getByText('Book appointment'));
 
     await waitFor(() => expect(screen.getByText(/future/i)).toBeInTheDocument());
@@ -42,9 +44,9 @@ describe('BookingPage validation', () => {
 
   it('rejects submission with a missing doctor ID', async () => {
     renderBookingPage();
-    const { date, time } = futureDateParts(24);
+    const { date, time } = futureDateParts(1);
     fireEvent.change(screen.getByLabelText('Date'), { target: { value: date } });
-    fireEvent.change(screen.getByLabelText('Time'), { target: { value: time } });
+    fireEvent.change(screen.getByLabelText(/20-minute appointment slot/i), { target: { value: time } });
     fireEvent.click(screen.getByText('Book appointment'));
 
     await waitFor(() => expect(screen.getByText(/at least 3 characters/i)).toBeInTheDocument());
@@ -73,7 +75,8 @@ describe('BookingPage idempotency key', () => {
       status: 'CONFIRMED',
       reminderSent: true,
       confirmed: true,
-      cancelled: false
+      cancelled: false,
+      reminderAt: '2026-09-01T08:00:00Z'
     });
 
     const createSpy = vi
@@ -112,7 +115,8 @@ describe('BookingPage idempotency key', () => {
       status: 'CONFIRMED',
       reminderSent: true,
       confirmed: true,
-      cancelled: false
+      cancelled: false,
+      reminderAt: '2026-09-01T08:00:00Z'
     });
     const createSpy = vi
       .spyOn(appointmentsApi, 'createAppointment')

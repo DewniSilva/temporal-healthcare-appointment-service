@@ -25,26 +25,38 @@ describe('Temporal appointment workflows', () => {
     updateAppointmentStatus: async () => undefined
   });
 
-  it('skips the durable reminder timer, exposes query state, and confirms by Signal', async () => {
+  it('skips the durable reminder timer, exposes query state, confirms by Signal, and releases the slot once the appointment concludes', async () => {
     const calls: string[] = [];
     const activities = baseActivities();
     activities.sendAppointmentReminder = async () => { calls.push('reminder'); };
     activities.updateAppointmentStatus = async ({ status }) => { calls.push(status); };
+    activities.releaseAppointmentSlot = async () => { calls.push('released'); };
     const worker = await Worker.create({
       connection: env.nativeConnection, taskQueue: 'reminder-test',
       workflowsPath: require.resolve('../src/worker/workflows/index.ts'), activities
     });
+    const appointmentTime = new Date(Date.now() + 3_600_000);
+    const reminderAt = new Date(appointmentTime.getTime() - 1800 * 1_000).toISOString();
     await worker.runUntil(async () => {
       const handle = await env.client.workflow.start(appointmentReminderWorkflow, {
         workflowId: 'reminder-confirm-test', taskQueue: 'reminder-test',
-        args: [{ appointmentId: 'apt-confirm', appointmentTime: new Date(Date.now() + 3_600_000).toISOString(), reminderLeadTimeSeconds: 1800 }]
+        args: [{ appointmentId: 'apt-confirm', appointmentTime: appointmentTime.toISOString(), reminderLeadTimeSeconds: 1800 }]
       });
       await env.sleep('31 minutes');
-      expect(await handle.query(appointmentStateQuery)).toEqual({ status: 'WAITING_FOR_CONFIRMATION', reminderSent: true, confirmed: false, cancelled: false });
+      expect(await handle.query(appointmentStateQuery)).toEqual({ status: 'WAITING_FOR_CONFIRMATION', reminderSent: true, confirmed: false, cancelled: false, reminderAt });
       await handle.signal(confirmAppointment);
+      // Give the time-skipping environment a moment to actually process the
+      // signal before querying, so this doesn't race ahead of the workflow task.
+      await env.sleep('1 second');
+
+      // Confirming must not immediately free the slot — only once the
+      // appointment's own time has passed should the reservation be released.
+      expect((await handle.query(appointmentStateQuery)).status).toBe('CONFIRMED');
+      expect(calls).not.toContain('released');
+
       expect((await handle.result()).status).toBe('CONFIRMED');
     });
-    expect(calls).toEqual(['reminder', 'CONFIRMED']);
+    expect(calls).toEqual(['reminder', 'CONFIRMED', 'released']);
   });
 
   it('cancels by Signal and releases the slot idempotently', async () => {

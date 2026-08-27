@@ -14,6 +14,7 @@ import { generateIdempotencyKey } from '../../lib/idempotency';
 import { toIsoWithOffset, localTimeZoneLabel } from '../../lib/dateTime';
 import { describeError } from '../../lib/apiError';
 import { rememberAppointment } from './recentAppointments';
+import { appointmentTimeSlots } from './timeSlots';
 
 interface BookingResult {
   appointmentId: string;
@@ -156,16 +157,22 @@ export function BookingPage() {
 
           <div>
             <label htmlFor="time" className="block text-sm font-medium text-slate-700">
-              Time
+              20-minute appointment slot
             </label>
-            <input
+            <select
               id="time"
-              type="time"
               aria-invalid={errors.time ? true : undefined}
               aria-describedby="time-hint time-error"
-              className="mt-1.5 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm shadow-sm focus-visible:border-primary-500"
+              className="mt-1.5 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus-visible:border-primary-500"
               {...register('time')}
-            />
+            >
+              <option value="">Select a time slot</option>
+              {appointmentTimeSlots.map((slot) => (
+                <option key={slot.value} value={slot.value}>
+                  {slot.label}
+                </option>
+              ))}
+            </select>
             {errors.time && (
               <p id="time-error" role="alert" className="mt-1.5 text-sm text-red-600">
                 {errors.time.message}
@@ -176,7 +183,7 @@ export function BookingPage() {
 
         <p id="time-hint" className="flex items-center gap-1.5 text-xs text-slate-400">
           <CalendarClock className="h-3.5 w-3.5" aria-hidden="true" />
-          Times use your local timezone ({localTimeZoneLabel()}).
+          Each slot occupies 20 minutes, between 7:00 AM–12:00 PM or 1:00 PM–5:00 PM. Times use your local timezone ({localTimeZoneLabel()}).
         </p>
 
         <Button type="submit" isLoading={isSubmitting || mutation.isPending}>

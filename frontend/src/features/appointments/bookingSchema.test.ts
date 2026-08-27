@@ -1,12 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { bookingFormSchema } from './bookingSchema';
 
-function futureDateParts(hoursFromNow: number): { date: string; time: string } {
-  const future = new Date(Date.now() + hoursFromNow * 60 * 60 * 1000);
+// A fixed 10:00 AM keeps this inside the working-hours window regardless of
+// the faked "now"; only the date needs to move forward.
+function futureDateParts(daysFromNow: number): { date: string; time: string } {
+  const future = new Date(Date.now() + daysFromNow * 24 * 60 * 60 * 1000);
   const pad = (n: number) => String(n).padStart(2, '0');
   return {
     date: `${future.getFullYear()}-${pad(future.getMonth() + 1)}-${pad(future.getDate())}`,
-    time: `${pad(future.getHours())}:${pad(future.getMinutes())}`
+    time: '10:00'
   };
 }
 
@@ -24,7 +26,7 @@ describe('bookingFormSchema', () => {
     const result = bookingFormSchema.safeParse({
       patientId: 'patient-001',
       doctorId: 'doctor-001',
-      ...futureDateParts(48)
+      ...futureDateParts(2)
     });
     expect(result.success).toBe(true);
   });
@@ -42,11 +44,21 @@ describe('bookingFormSchema', () => {
     }
   });
 
+  it('rejects a time that is not aligned to a 20-minute slot', () => {
+    const result = bookingFormSchema.safeParse({
+      patientId: 'patient-001',
+      doctorId: 'doctor-001',
+      date: '2099-01-01',
+      time: '09:10'
+    });
+    expect(result.success).toBe(false);
+  });
+
   it('rejects patient/doctor IDs with unsupported characters', () => {
     const result = bookingFormSchema.safeParse({
       patientId: 'patient 001!',
       doctorId: 'doctor-001',
-      ...futureDateParts(24)
+      ...futureDateParts(1)
     });
     expect(result.success).toBe(false);
   });
@@ -55,7 +67,7 @@ describe('bookingFormSchema', () => {
     const result = bookingFormSchema.safeParse({
       patientId: 'ab',
       doctorId: 'doctor-001',
-      ...futureDateParts(24)
+      ...futureDateParts(1)
     });
     expect(result.success).toBe(false);
   });

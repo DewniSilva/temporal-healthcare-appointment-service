@@ -77,13 +77,15 @@ model Appointment {
 }
 
 model SlotReservation {
-  appointmentId   String   @id
-  doctorId        String
-  appointmentTime DateTime
-  createdAt       DateTime @default(now())
-  doctor          Doctor   @relation(fields: [doctorId], references: [id])
+  appointmentId    String   @id
+  doctorId         String
+  appointmentTime  DateTime
+  overlapProtected Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  doctor           Doctor   @relation(fields: [doctorId], references: [id])
 
-  // This is the database-level race protection for concurrent workers.
+  // Exact-start protection is represented here. A customized PostgreSQL
+  // exclusion constraint in the migration also rejects 20-minute overlaps.
   @@unique([doctorId, appointmentTime])
 }
 

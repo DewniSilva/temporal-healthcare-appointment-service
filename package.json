@@ -3,7 +3,9 @@
   "version": "1.0.0",
   "private": true,
   "description": "Small production-minded appointment workflow demo built around Temporal",
-  "engines": { "node": ">=20 <21" },
+  "engines": {
+    "node": ">=20 <21"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "start": "node dist/src/backend/server.js",
@@ -17,7 +19,9 @@
     "prisma:seed": "tsx prisma/seed.ts",
     "check": "npm run prisma:generate && npm run build && npm test"
   },
-  "prisma": { "seed": "tsx prisma/seed.ts" },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  },
   "dependencies": {
     "@prisma/client": "6.12.0",
     "@temporalio/activity": "1.13.2",
@@ -30,9 +34,12 @@
     "express": "5.1.0",
     "express-rate-limit": "8.6.2",
     "helmet": "8.1.0",
+    "ioredis": "^6.0.0",
     "jsonwebtoken": "9.0.2",
     "pino": "9.9.4",
     "pino-http": "10.5.0",
+    "rate-limit-redis": "^6.0.1",
+    "resend": "6.24.0",
     "zod": "4.1.11"
   },
   "devDependencies": {

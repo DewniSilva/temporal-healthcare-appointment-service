@@ -33,6 +33,8 @@ export interface AppointmentWorkflowState {
   reminderSent: boolean;
   confirmed: boolean;
   cancelled: boolean;
+  /** ISO timestamp of the durable reminder timer, fixed at Workflow start. */
+  reminderAt: string;
 }
 
 export interface AppointmentActivityInput {
@@ -64,3 +66,33 @@ export interface AppointmentActivities {
 
 export const bookingWorkflowId = (appointmentId: string): string => `appointment-${appointmentId}`;
 export const reminderWorkflowId = (appointmentId: string): string => `appointment-reminder-${appointmentId}`;
+export const reconciliationScheduleId = 'appointment-reconciliation';
+export const reconciliationWorkflowId = 'appointment-reconciliation-workflow';
+
+export interface ReconciliationInput {
+  /** How long past an appointment's own end time before its state counts as stale rather than mid-cleanup. */
+  graceMinutes: number;
+}
+
+export interface OrphanedReservation {
+  appointmentId: string;
+  doctorId: string;
+  appointmentTime: string;
+}
+
+export interface StuckAppointment {
+  appointmentId: string;
+  appointmentTime: string;
+}
+
+export interface ReconciliationActivities {
+  findOrphanedReservations(input: ReconciliationInput): Promise<OrphanedReservation[]>;
+  findStuckBookedAppointments(input: ReconciliationInput): Promise<StuckAppointment[]>;
+  findFailedReminderNotifications(input: ReconciliationInput): Promise<string[]>;
+}
+
+export interface ReconciliationResult {
+  orphanedReservationsReleased: number;
+  stuckBookedAppointments: number;
+  failedRemindersRetried: number;
+}
