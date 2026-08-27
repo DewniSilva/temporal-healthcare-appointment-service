@@ -88,5 +88,14 @@ services:
     command: ["node", "dist/src/worker/worker.js"]
     restart: unless-stopped
 
+  frontend:
+    build: ./frontend
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "5173:80"
+    restart: unless-stopped
+
 volumes:
   postgres-data:
