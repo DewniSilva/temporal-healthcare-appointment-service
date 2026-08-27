@@ -94,7 +94,10 @@ services:
       backend:
         condition: service_healthy
     ports:
-      - "5173:80"
+      # Host port 5173 sits inside a Windows/Hyper-V dynamic port exclusion
+      # range on some machines, which blocks Docker from binding it. 8081 is
+      # outside all default exclusion ranges; adjust if it's already in use.
+      - "8081:80"
     restart: unless-stopped
 
 volumes:

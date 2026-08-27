@@ -12,7 +12,7 @@ docker compose up --build
 
 - API: http://localhost:3000
 - Health: http://localhost:3000/health
-- Frontend: http://localhost:5173
+- Frontend: http://localhost:8081
 - Temporal UI: http://localhost:8080
 - PostgreSQL and Temporal gRPC are internal-only (not host-published).
 
