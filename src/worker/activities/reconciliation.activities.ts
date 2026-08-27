@@ -57,16 +57,19 @@ export const reconciliationActivities: ReconciliationActivities = {
   // Safe to auto-heal: Resend was given a stable idempotency key derived from
   // the appointmentId (see resend.notification.ts), so re-attempting the send
   // cannot duplicate a delivery that already went out — it either sends for
-  // the first time or gets back the same cached result. Only retried while
-  // the appointment is still relevant (not cancelled, slot not yet stale).
-  async findFailedReminderNotifications({ graceMinutes }: ReconciliationInput): Promise<string[]> {
+  // the first time or gets back the same cached result. Only retried while a
+  // "reminder" would still mean something: the appointment hasn't happened
+  // yet. (Deliberately *not* the orphaned-reservation grace window — sending
+  // a reminder for a slot that's already in the past is never correct, no
+  // matter how recently it passed.)
+  async findFailedReminderNotifications(_input: ReconciliationInput): Promise<string[]> {
     const rows = await prisma.notification.findMany({
       where: {
         type: NotificationType.APPOINTMENT_REMINDER,
         status: NotificationStatus.FAILED,
         appointment: {
           status: { not: AppointmentStatus.CANCELLED },
-          appointmentTime: { gte: staleCutoff(graceMinutes) }
+          appointmentTime: { gt: new Date() }
         }
       },
       select: { appointmentId: true }
