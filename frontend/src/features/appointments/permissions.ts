@@ -15,3 +15,9 @@ export function canCreateForPatient(user: AuthUser, patientId: string): boolean 
   if (user.role === 'ADMIN') return true;
   return user.role === 'PATIENT' && user.patientId === patientId;
 }
+
+/** For doctor/admin-only actions (mark completed / mark no-show). */
+export function canManageAsDoctor(user: AuthUser, appointment: Appointment): boolean {
+  if (user.role === 'ADMIN') return true;
+  return user.role === 'DOCTOR' && user.doctorId === appointment.doctorId;
+}

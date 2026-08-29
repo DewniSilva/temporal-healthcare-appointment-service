@@ -18,11 +18,14 @@ const appointment: Appointment = {
 };
 
 const confirmedWorkflow: AppointmentWorkflowState = {
-  status: 'CONFIRMED',
-  reminderSent: true,
-  confirmed: true,
-  cancelled: false,
-  reminderAt: '2026-09-01T08:00:00Z'
+  appointmentStatus: 'CONFIRMED',
+  reservationStatus: 'RESERVED',
+  confirmationReminderAt: '2026-08-31T10:00:00Z',
+  confirmationDeadlineAt: '2026-09-01T04:00:00Z',
+  upcomingReminderAt: '2026-09-01T08:00:00Z',
+  confirmationReminderSent: true,
+  upcomingReminderSent: false,
+  confirmedAt: '2026-08-31T12:00:00Z'
 };
 
 describe('useBookingProgress', () => {
@@ -48,11 +51,14 @@ describe('useBookingProgress', () => {
   it('shows the result as soon as the workflow is queryable, without waiting for a terminal status', async () => {
     vi.spyOn(api, 'getAppointment').mockResolvedValue(appointment);
     const scheduledWorkflow: AppointmentWorkflowState = {
-      status: 'SCHEDULED',
-      reminderSent: false,
-      confirmed: false,
-      cancelled: false,
-      reminderAt: '2026-09-05T18:00:00Z'
+      appointmentStatus: 'BOOKED',
+      reservationStatus: 'RESERVED',
+      confirmationReminderAt: '2026-09-04T20:00:00Z',
+      confirmationDeadlineAt: '2026-09-05T14:00:00Z',
+      upcomingReminderAt: '2026-09-05T18:00:00Z',
+      confirmationReminderSent: false,
+      upcomingReminderSent: false,
+      confirmedAt: null
     };
     let workflowAttempt = 0;
     vi.spyOn(api, 'getWorkflowState').mockImplementation(async () => {

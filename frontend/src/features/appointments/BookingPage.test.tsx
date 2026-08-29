@@ -72,11 +72,14 @@ describe('BookingPage idempotency key', () => {
       updatedAt: '2026-08-27T00:00:00Z'
     });
     vi.spyOn(appointmentsApi, 'getWorkflowState').mockResolvedValue({
-      status: 'CONFIRMED',
-      reminderSent: true,
-      confirmed: true,
-      cancelled: false,
-      reminderAt: '2026-09-01T08:00:00Z'
+      appointmentStatus: 'CONFIRMED',
+      reservationStatus: 'RESERVED',
+      confirmationReminderAt: '2026-08-31T10:00:00Z',
+      confirmationDeadlineAt: '2026-09-01T04:00:00Z',
+      upcomingReminderAt: '2026-09-01T08:00:00Z',
+      confirmationReminderSent: true,
+      upcomingReminderSent: false,
+      confirmedAt: '2026-08-31T12:00:00Z'
     });
 
     const createSpy = vi
@@ -112,11 +115,14 @@ describe('BookingPage idempotency key', () => {
       updatedAt: '2026-08-27T00:00:00Z'
     });
     vi.spyOn(appointmentsApi, 'getWorkflowState').mockResolvedValue({
-      status: 'CONFIRMED',
-      reminderSent: true,
-      confirmed: true,
-      cancelled: false,
-      reminderAt: '2026-09-01T08:00:00Z'
+      appointmentStatus: 'CONFIRMED',
+      reservationStatus: 'RESERVED',
+      confirmationReminderAt: '2026-08-31T10:00:00Z',
+      confirmationDeadlineAt: '2026-09-01T04:00:00Z',
+      upcomingReminderAt: '2026-09-01T08:00:00Z',
+      confirmationReminderSent: true,
+      upcomingReminderSent: false,
+      confirmedAt: '2026-08-31T12:00:00Z'
     });
     const createSpy = vi
       .spyOn(appointmentsApi, 'createAppointment')

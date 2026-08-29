@@ -7,7 +7,7 @@ import { Spinner } from '../../../components/ui/Spinner';
 import { Timeline } from './Timeline';
 import { useBookingProgress } from '../hooks/useBookingProgress';
 import { formatMonthDayTime } from '../../../lib/dateTime';
-import { workflowStatusPresentation } from '../statusPresentation';
+import { dbStatusPresentation } from '../statusPresentation';
 
 interface BookingProcessingScreenProps {
   appointmentId: string;
@@ -21,7 +21,7 @@ export function BookingProcessingScreen({
   onBookAnother
 }: BookingProcessingScreenProps) {
   const progress = useBookingProgress(appointmentId);
-  const dbStatus = progress.appointment?.status ?? 'PENDING';
+  const dbStatus = progress.appointment?.status ?? 'REQUESTED';
 
   return (
     <Card>
@@ -50,8 +50,9 @@ export function BookingProcessingScreen({
       {progress.phase === 'complete' && progress.appointment && progress.workflow && (
         <Alert variant="success" title="Appointment booked successfully">
           <p>Appointment: {formatMonthDayTime(progress.appointment.appointmentTime)}</p>
-          <p>Reminder scheduled: {formatMonthDayTime(progress.workflow.reminderAt)}</p>
-          <p>Status: {workflowStatusPresentation[progress.workflow.status].label}</p>
+          <p>Confirmation reminder scheduled: {formatMonthDayTime(progress.workflow.confirmationReminderAt)}</p>
+          <p>Confirm before: {formatMonthDayTime(progress.workflow.confirmationDeadlineAt)}</p>
+          <p>Status: {dbStatusPresentation[progress.workflow.appointmentStatus].label}</p>
         </Alert>
       )}
 

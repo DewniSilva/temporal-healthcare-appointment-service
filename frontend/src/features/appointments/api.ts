@@ -36,3 +36,11 @@ export function confirmAppointment(id: string): Promise<SignalResponse> {
 export function cancelAppointment(id: string): Promise<SignalResponse> {
   return apiRequest<SignalResponse>(`/appointments/${id}/cancel`, { method: 'POST' });
 }
+
+export function completeAppointment(id: string): Promise<SignalResponse> {
+  return apiRequest<SignalResponse>(`/appointments/${id}/complete`, { method: 'POST' });
+}
+
+export function markNoShow(id: string): Promise<SignalResponse> {
+  return apiRequest<SignalResponse>(`/appointments/${id}/no-show`, { method: 'POST' });
+}

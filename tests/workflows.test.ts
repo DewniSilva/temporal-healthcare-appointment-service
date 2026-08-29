@@ -71,8 +71,18 @@ describe('appointment workflow', () => {
       const state = await handle.query(appointmentStateQuery);
       expect(state.appointmentStatus).toBe('BOOKED');
       expect(state.reservationStatus).toBe('RESERVED');
+      // Every test shares one TestWorkflowEnvironment (and its one simulated
+      // clock): a Workflow left open past its own Worker's shutdown can
+      // starve *later* tests' time-skipping, since the environment still has
+      // to account for its pending timer with nothing left to service it.
+      // Every test must drive its Workflow to completion before finishing.
+      await handle.signal(cancelAppointment);
+      await handle.result();
     });
-    expect(calls).toEqual(['createRequestedAppointment', 'appointment:RESERVING', 'reserveSlot', 'appointment:BOOKED', 'scheduleReminders']);
+    expect(calls).toEqual([
+      'createRequestedAppointment', 'appointment:RESERVING', 'reserveSlot', 'appointment:BOOKED', 'scheduleReminders',
+      'appointment:CANCELLED', 'releaseSlot', 'cancelReminder:UPCOMING_REMINDER', 'cancelReminder:CONFIRMATION_REMINDER'
+    ]);
   });
 
   it('rejects an invalid booking request (test 2)', async () => {
@@ -221,6 +231,10 @@ describe('appointment workflow', () => {
       await env.sleep('1 second');
       const state = await handle.query(appointmentStateQuery);
       expect(state.appointmentStatus).toBe('CONFIRMED');
+      // See the note in the first test: every Workflow must reach
+      // completion before the test ends, or it starves later tests' time-skipping.
+      await handle.signal(cancelAppointment);
+      await handle.result();
     });
     expect(calls).toContain('appointment:CONFIRMED');
     expect(calls).not.toContain('appointment:NO_RESPONSE');
@@ -241,6 +255,10 @@ describe('appointment workflow', () => {
       await env.sleep('1 second');
       const state = await handle.query(appointmentStateQuery);
       expect(state.appointmentStatus).toBe('CONFIRMED');
+      // See the note in the first test: drive this Workflow to completion
+      // rather than leaving it open for the rest of the suite.
+      await handle.signal(cancelAppointment);
+      await handle.result();
     });
     expect(calls).not.toContain('appointment:COMPLETED');
   });
@@ -271,6 +289,10 @@ describe('appointment workflow', () => {
       const state = await handle.query(appointmentStateQuery);
       // The send failed, but the appointment must remain BOOKED, not error out.
       expect(state.appointmentStatus).toBe('BOOKED');
+      // See the note in the first test: drive this Workflow to completion
+      // rather than leaving it open for the rest of the suite.
+      await handle.signal(cancelAppointment);
+      await handle.result();
     });
     expect(calls).toContain('sendReminder:CONFIRMATION_REMINDER');
   });

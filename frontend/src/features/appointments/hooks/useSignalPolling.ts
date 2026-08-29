@@ -18,7 +18,7 @@ export function useSignalPolling(appointmentId: string, enabled: boolean) {
   const poll = usePolling<AppointmentWorkflowState>({
     enabled,
     fetcher: (signal) => getWorkflowState(appointmentId, signal),
-    isTerminal: (state) => isTerminalWorkflowStatus(state.status),
+    isTerminal: (state) => isTerminalWorkflowStatus(state.appointmentStatus),
     isExpectedNotReady: (error) => error instanceof ApiError && error.isServiceUnavailable
   });
 
