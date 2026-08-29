@@ -1,4 +1,4 @@
-import express from 'express';
+import express, { type Request, type Response } from 'express';
 import helmet from 'helmet';
 import cors from 'cors';
 import { createRateLimiter } from './api/middleware/rateLimit.middleware';
@@ -22,7 +22,7 @@ export function createApp() {
   app.use(requestId);
   app.use((req, res, next) => {
     const started = Date.now();
-    if (req.path !== '/health') {
+    if (req.path !== '/health' && req.path !== '/liveness' && req.path !== '/readiness') {
       res.on('finish', () => logger.info({ event: 'http_request', requestId: req.requestId, method: req.method, path: req.path, status: res.statusCode, durationMs: Date.now() - started }));
     }
     next();
@@ -33,7 +33,12 @@ export function createApp() {
     const body = loginSchema.parse(req.body);
     res.json(await login(body.email, body.password));
   });
-  app.get('/health', async (_req, res) => {
+  // Liveness answers "is the process alive?" — no dependency checks, so a
+  // slow/unavailable Postgres or Temporal never causes an orchestrator to
+  // kill and restart an otherwise-healthy process.
+  app.get('/liveness', (_req, res) => res.status(200).json({ status: 'ok' }));
+
+  const readiness = async (_req: Request, res: Response) => {
     // Each dependency is checked independently so one being down doesn't hide
     // the other's status, and a probe against an uninitialized Temporal
     // client (a sync throw) is turned into a rejection alongside it.
@@ -47,7 +52,12 @@ export function createApp() {
     const redis = redisResult.status === 'fulfilled' ? 'ready' : 'unavailable';
     const healthy = database === 'ready' && temporal === 'ready' && redis === 'ready';
     res.status(healthy ? 200 : 503).json({ status: healthy ? 'ok' : 'unavailable', database, temporalClient: temporal, redis });
-  });
+  };
+  // Readiness answers "can the app actually do its work?" — checked against
+  // every dependency it needs. Kept at /health too, unchanged, so the
+  // existing frontend HealthCard keeps working without modification.
+  app.get('/readiness', readiness);
+  app.get('/health', readiness);
   app.use('/appointments', createAppointmentRouter());
   app.use(notFound);
   app.use(errorHandler);

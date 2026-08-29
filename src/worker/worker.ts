@@ -1,5 +1,7 @@
 import { NativeConnection, Worker } from '@temporalio/worker';
-import { activities } from './activities/appointment.activities';
+import { appointmentActivities } from './activities/appointment.activities';
+import { reservationActivities } from './activities/reservation.activities';
+import { reminderActivities } from './activities/reminder.activities';
 import { reconciliationActivities } from './activities/reconciliation.activities';
 import { getEnv } from '../shared/config/env';
 import { prisma } from '../shared/database/prisma';
@@ -30,7 +32,7 @@ async function main(): Promise<void> {
     namespace: env.TEMPORAL_NAMESPACE,
     taskQueue: env.TEMPORAL_TASK_QUEUE,
     workflowsPath: require.resolve('./workflows'),
-    activities: { ...activities, ...reconciliationActivities },
+    activities: { ...appointmentActivities, ...reservationActivities, ...reminderActivities, ...reconciliationActivities },
     maxConcurrentActivityTaskExecutions: 20,
     maxConcurrentWorkflowTaskExecutions: 50
   });

@@ -14,22 +14,46 @@ enum UserRole {
 }
 
 enum AppointmentStatus {
-  PENDING
+  REQUESTED
+  RESERVING
   BOOKED
   CONFIRMED
+  NO_RESPONSE
   CANCELLED
   COMPLETED
+  NO_SHOW
+  REJECTED
+  BOOKING_FAILED
 }
 
-enum NotificationType {
-  BOOKING_CONFIRMATION
-  APPOINTMENT_REMINDER
+enum ReservationStatus {
+  RESERVING
+  RESERVED
+  RELEASED
+  CONFLICTED
 }
 
-enum NotificationStatus {
+enum ReminderType {
+  CONFIRMATION_REMINDER
+  UPCOMING_REMINDER
+}
+
+enum ReminderStatus {
+  SCHEDULED
   PENDING
+  SENDING
   SENT
+  DELIVERED
   FAILED
+  BOUNCED
+  CANCELLED
+}
+
+enum ActorRole {
+  PATIENT
+  DOCTOR
+  ADMIN
+  SYSTEM
 }
 
 model User {
@@ -51,25 +75,32 @@ model Patient {
 }
 
 model Doctor {
-  id           String        @id
+  id           String            @id
   displayName  String
-  userId       String        @unique
-  user         User          @relation(fields: [userId], references: [id])
+  userId       String            @unique
+  user         User              @relation(fields: [userId], references: [id])
   appointments Appointment[]
   reservations SlotReservation[]
 }
 
 model Appointment {
-  id              String            @id
-  patientId       String
-  doctorId        String
-  appointmentTime DateTime
-  status          AppointmentStatus @default(PENDING)
-  createdAt       DateTime          @default(now())
-  updatedAt       DateTime          @updatedAt
-  patient         Patient           @relation(fields: [patientId], references: [id])
-  doctor          Doctor            @relation(fields: [doctorId], references: [id])
-  notifications   Notification[]
+  id                         String            @id
+  patientId                  String
+  doctorId                   String
+  appointmentTime            DateTime
+  // Wall-clock UTC offset (minutes) captured from the original booking
+  // request, e.g. "+05:30" -> 330. There is no stored IANA zone, so reminder
+  // emails render against this fixed offset rather than a DST-aware zone.
+  appointmentTzOffsetMinutes Int
+  status                     AppointmentStatus @default(REQUESTED)
+  confirmedAt                DateTime?
+  createdAt                  DateTime          @default(now())
+  updatedAt                  DateTime          @updatedAt
+  patient                    Patient           @relation(fields: [patientId], references: [id])
+  doctor                     Doctor            @relation(fields: [doctorId], references: [id])
+  reservation                SlotReservation?
+  reminders                  Reminder[]
+  auditLogs                  AuditLog[]
 
   @@index([patientId])
   @@index([appointmentTime])
@@ -77,27 +108,58 @@ model Appointment {
 }
 
 model SlotReservation {
-  appointmentId    String   @id
+  appointmentId    String            @id
   doctorId         String
   appointmentTime  DateTime
-  overlapProtected Boolean  @default(true)
-  createdAt        DateTime @default(now())
-  doctor           Doctor   @relation(fields: [doctorId], references: [id])
+  status           ReservationStatus @default(RESERVING)
+  overlapProtected Boolean           @default(true)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  doctor           Doctor            @relation(fields: [doctorId], references: [id])
+  appointment      Appointment       @relation(fields: [appointmentId], references: [id])
 
   // Exact-start protection is represented here. A customized PostgreSQL
-  // exclusion constraint in the migration also rejects 20-minute overlaps.
+  // exclusion constraint in the migration also rejects 20-minute overlaps,
+  // scoped to status = RESERVED (see migration.sql).
   @@unique([doctorId, appointmentTime])
+  @@index([status])
 }
 
-model Notification {
-  id            String             @id @default(cuid())
-  appointmentId String
-  type          NotificationType
-  status        NotificationStatus @default(PENDING)
-  sentAt        DateTime?
-  createdAt     DateTime           @default(now())
-  appointment   Appointment        @relation(fields: [appointmentId], references: [id])
+model Reminder {
+  id                String         @id @default(cuid())
+  appointmentId     String
+  type              ReminderType
+  status            ReminderStatus @default(SCHEDULED)
+  // Deterministic, e.g. "appointment-{id}-confirmation-reminder". Reused
+  // as the Resend idempotency key across retries and reconciliation.
+  idempotencyKey    String         @unique
+  providerMessageId String?
+  attemptCount      Int            @default(0)
+  scheduledAt       DateTime
+  sentAt            DateTime?
+  deliveredAt       DateTime?
+  failedAt          DateTime?
+  lastError         String?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+  appointment       Appointment    @relation(fields: [appointmentId], references: [id])
 
-  // One logical notification per appointment and purpose makes retries idempotent.
+  // One logical reminder per appointment and type makes retries idempotent.
   @@unique([appointmentId, type])
+  @@index([status])
+}
+
+model AuditLog {
+  id            String      @id @default(cuid())
+  appointmentId String
+  actorId       String?
+  actorRole     ActorRole
+  action        String
+  previousState String?
+  newState      String
+  correlationId String?
+  createdAt     DateTime    @default(now())
+  appointment   Appointment @relation(fields: [appointmentId], references: [id])
+
+  @@index([appointmentId])
 }

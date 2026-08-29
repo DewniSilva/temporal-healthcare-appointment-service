@@ -2,6 +2,7 @@ export const APPOINTMENT_SLOT_MINUTES = 20;
 export const APPOINTMENT_SLOT_MS = APPOINTMENT_SLOT_MINUTES * 60_000;
 
 const offsetDateTimeParts = /T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
+const offsetSuffix = /(Z|[+-])(\d{2}):(\d{2})$/;
 
 // 7:00 AM–12:00 PM and 1:00 PM–5:00 PM, by the caller's wall-clock hour.
 const WORKING_HOUR_RANGES: Array<{ startHour: number; endHour: number }> = [
@@ -27,6 +28,14 @@ export function isWithinWorkingHours(appointmentTime: string): boolean {
   const parts = parseWallClockTime(appointmentTime);
   if (!parts) return false;
   return WORKING_HOUR_RANGES.some((range) => parts.hour >= range.startHour && parts.hour < range.endHour);
+}
+
+/** Captures the wall-clock UTC offset (minutes) from an offset-qualified ISO datetime string, e.g. "+05:30" -> 330, "Z" -> 0. */
+export function extractTzOffsetMinutes(appointmentTime: string): number {
+  const match = offsetSuffix.exec(appointmentTime);
+  if (!match || match[1] === 'Z') return 0;
+  const sign = match[1] === '-' ? -1 : 1;
+  return sign * (Number(match[2]) * 60 + Number(match[3]));
 }
 
 /**

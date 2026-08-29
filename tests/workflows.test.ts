@@ -2,111 +2,276 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { ApplicationFailure } from '@temporalio/activity';
 import { Worker } from '@temporalio/worker';
 import { TestWorkflowEnvironment } from '@temporalio/testing';
-import type { AppointmentActivities } from '../src/shared/temporal/contracts';
-import { appointmentBookingWorkflow } from '../src/worker/workflows/appointmentBooking.workflow';
-import { appointmentReminderWorkflow } from '../src/worker/workflows/appointmentReminder.workflow';
+import type { AppointmentActivities, ReminderActivities, ReservationActivities } from '../src/shared/temporal/contracts';
+import { appointmentWorkflow } from '../src/worker/workflows/appointment.workflow';
 import { appointmentStateQuery } from '../src/shared/temporal/queries';
-import { cancelAppointment, confirmAppointment } from '../src/shared/temporal/signals';
+import { cancelAppointment, confirmAppointment, markAppointmentCompleted, markAppointmentNoShow } from '../src/shared/temporal/signals';
 
-describe('Temporal appointment workflows', () => {
+type FakeActivities = AppointmentActivities & ReservationActivities & ReminderActivities;
+
+const CONFIG = { confirmationReminderHoursBefore: 24, confirmationDeadlineHoursBefore: 6, upcomingReminderHoursBefore: 2 };
+
+describe('appointment workflow', () => {
   let env: TestWorkflowEnvironment;
+  let taskQueueCounter = 0;
 
   beforeAll(async () => { env = await TestWorkflowEnvironment.createTimeSkipping(); }, 120_000);
   afterAll(async () => { await env?.teardown(); });
 
-  const baseActivities = (): AppointmentActivities => ({
-    validateAppointmentRequest: async () => undefined,
-    checkDoctorAvailability: async () => undefined,
-    reserveAppointmentSlot: async () => undefined,
-    releaseAppointmentSlot: async () => undefined,
-    createAppointment: async () => undefined,
-    sendBookingConfirmation: async () => undefined,
-    sendAppointmentReminder: async () => undefined,
-    updateAppointmentStatus: async () => undefined
+  function baseActivities(calls: string[]): FakeActivities {
+    return {
+      validateBooking: async () => ({ valid: true }),
+      createRequestedAppointment: async () => { calls.push('createRequestedAppointment'); },
+      transitionAppointment: async ({ to }) => { calls.push(`appointment:${to}`); },
+      reserveSlot: async () => { calls.push('reserveSlot'); },
+      releaseSlot: async () => { calls.push('releaseSlot'); return { released: true }; },
+      scheduleReminders: async () => { calls.push('scheduleReminders'); },
+      cancelReminder: async ({ type }) => { calls.push(`cancelReminder:${type}`); return { cancelled: true }; },
+      sendReminder: async ({ type }) => { calls.push(`sendReminder:${type}`); return { sent: true }; }
+    };
+  }
+
+  /**
+   * appointmentTimeOffsetMs is relative to the *test server's* current
+   * simulated clock (env.currentTimeMs()), not the real Node process clock —
+   * this environment's clock keeps advancing across every test in this
+   * file (env.sleep in one test permanently moves it forward), so anchoring
+   * to real Date.now() would silently put "the future" in the past for
+   * every test after the first few multi-hour sleeps.
+   */
+  async function startWorkflow(activities: FakeActivities, appointmentTimeOffsetMs: number) {
+    const taskQueue = `appointment-workflow-test-${taskQueueCounter++}`;
+    const worker = await Worker.create({
+      connection: env.nativeConnection,
+      taskQueue,
+      workflowsPath: require.resolve('../src/worker/workflows/index.ts'),
+      activities
+    });
+    const now = await env.currentTimeMs();
+    const handle = await env.client.workflow.start(appointmentWorkflow, {
+      workflowId: `wf-${taskQueueCounter}`,
+      taskQueue,
+      args: [{
+        appointmentId: `apt-${taskQueueCounter}`,
+        patientId: 'patient-001',
+        doctorId: 'doctor-001',
+        appointmentTime: new Date(now + appointmentTimeOffsetMs).toISOString(),
+        appointmentTzOffsetMinutes: 0,
+        ...CONFIG
+      }]
+    });
+    return { worker, handle };
+  }
+
+  it('books successfully, leaving the slot RESERVED (tests 1, 5)', async () => {
+    const calls: string[] = [];
+    const { worker, handle } = await startWorkflow(baseActivities(calls), 30 * 3_600_000);
+    await worker.runUntil(async () => {
+      await env.sleep('1 second');
+      const state = await handle.query(appointmentStateQuery);
+      expect(state.appointmentStatus).toBe('BOOKED');
+      expect(state.reservationStatus).toBe('RESERVED');
+    });
+    expect(calls).toEqual(['createRequestedAppointment', 'appointment:RESERVING', 'reserveSlot', 'appointment:BOOKED', 'scheduleReminders']);
   });
 
-  it('skips the durable reminder timer, exposes query state, confirms by Signal, and releases the slot once the appointment concludes', async () => {
+  it('rejects an invalid booking request (test 2)', async () => {
     const calls: string[] = [];
-    const activities = baseActivities();
-    activities.sendAppointmentReminder = async () => { calls.push('reminder'); };
-    activities.updateAppointmentStatus = async ({ status }) => { calls.push(status); };
-    activities.releaseAppointmentSlot = async () => { calls.push('released'); };
-    const worker = await Worker.create({
-      connection: env.nativeConnection, taskQueue: 'reminder-test',
-      workflowsPath: require.resolve('../src/worker/workflows/index.ts'), activities
-    });
-    const appointmentTime = new Date(Date.now() + 3_600_000);
-    const reminderAt = new Date(appointmentTime.getTime() - 1800 * 1_000).toISOString();
+    const activities = baseActivities(calls);
+    activities.validateBooking = async () => ({ valid: false, reason: 'Doctor does not exist.' });
+    const { worker, handle } = await startWorkflow(activities, 30 * 3_600_000);
     await worker.runUntil(async () => {
-      const handle = await env.client.workflow.start(appointmentReminderWorkflow, {
-        workflowId: 'reminder-confirm-test', taskQueue: 'reminder-test',
-        args: [{ appointmentId: 'apt-confirm', appointmentTime: appointmentTime.toISOString(), reminderLeadTimeSeconds: 1800 }]
-      });
-      await env.sleep('31 minutes');
-      expect(await handle.query(appointmentStateQuery)).toEqual({ status: 'WAITING_FOR_CONFIRMATION', reminderSent: true, confirmed: false, cancelled: false, reminderAt });
+      const result = await handle.result();
+      expect(result.appointmentStatus).toBe('REJECTED');
+    });
+    expect(calls).toEqual(['createRequestedAppointment', 'appointment:REJECTED']);
+  });
+
+  it('marks BOOKING_FAILED on a slot conflict, distinguishing it from an infrastructure failure (test 3)', async () => {
+    const calls: string[] = [];
+    const activities = baseActivities(calls);
+    activities.reserveSlot = async () => {
+      calls.push('reserveSlot');
+      throw ApplicationFailure.nonRetryable('slot conflict', 'DOCTOR_UNAVAILABLE');
+    };
+    const { worker, handle } = await startWorkflow(activities, 30 * 3_600_000);
+    await worker.runUntil(async () => {
+      const result = await handle.result();
+      expect(result.appointmentStatus).toBe('BOOKING_FAILED');
+      expect(result.reservationStatus).toBe('CONFLICTED');
+    });
+    expect(calls).toEqual(['createRequestedAppointment', 'appointment:RESERVING', 'reserveSlot', 'releaseSlot', 'appointment:BOOKING_FAILED']);
+  });
+
+  it('an infrastructure failure reserving the slot is not mistaken for a conflict', async () => {
+    const calls: string[] = [];
+    const activities = baseActivities(calls);
+    activities.reserveSlot = async () => { calls.push('reserveSlot'); throw new Error('database unavailable'); };
+    const { worker, handle } = await startWorkflow(activities, 30 * 3_600_000);
+    await worker.runUntil(async () => {
+      const result = await handle.result();
+      expect(result.appointmentStatus).toBe('BOOKING_FAILED');
+      expect(result.reservationStatus).toBe('RELEASED');
+    });
+  });
+
+  it('confirming before the 24h reminder skips it, keeps the slot reserved, then still sends the 2h reminder without re-asking, and completion releases the slot (tests 10-12, 20-22, 33, 35)', async () => {
+    const calls: string[] = [];
+    const activities = baseActivities(calls);
+    const { worker, handle } = await startWorkflow(activities, 30 * 3_600_000);
+    await worker.runUntil(async () => {
+      await env.sleep('1 second');
       await handle.signal(confirmAppointment);
-      // Give the time-skipping environment a moment to actually process the
-      // signal before querying, so this doesn't race ahead of the workflow task.
       await env.sleep('1 second');
 
-      // Confirming must not immediately free the slot — only once the
-      // appointment's own time has passed should the reservation be released.
-      expect((await handle.query(appointmentStateQuery)).status).toBe('CONFIRMED');
-      expect(calls).not.toContain('released');
+      const state = await handle.query(appointmentStateQuery);
+      expect(state.appointmentStatus).toBe('CONFIRMED');
+      expect(state.reservationStatus).toBe('RESERVED');
+      expect(calls).not.toContain('sendReminder:CONFIRMATION_REMINDER');
+      expect(calls).toContain('cancelReminder:CONFIRMATION_REMINDER');
 
-      expect((await handle.result()).status).toBe('CONFIRMED');
+      // Skip forward to the 2-hour mark: the upcoming reminder must fire
+      // (the appointment is CONFIRMED), without asking to confirm again.
+      await env.sleep('29 hours');
+      expect(calls).toContain('sendReminder:UPCOMING_REMINDER');
+      expect(calls).not.toContain('sendReminder:CONFIRMATION_REMINDER');
+
+      // The appointment time itself (30h) hasn't arrived yet at the 29h
+      // mark, so completion must not be actionable until then.
+      await handle.signal(markAppointmentCompleted);
+      await env.sleep('1 second');
+      expect((await handle.query(appointmentStateQuery)).appointmentStatus).toBe('CONFIRMED');
+
+      await env.sleep('2 hours'); // past the actual appointment time
+      const result = await handle.result();
+      expect(result.appointmentStatus).toBe('COMPLETED');
+      expect(result.reservationStatus).toBe('RELEASED');
     });
-    expect(calls).toEqual(['reminder', 'CONFIRMED', 'released']);
+    expect(calls[calls.length - 1]).toBe('releaseSlot');
   });
 
-  it('cancels by Signal and releases the slot idempotently', async () => {
+  it('a doctor/admin can mark a confirmed appointment NO_SHOW once the appointment time has passed, which also releases the slot (test 34, 36)', async () => {
     const calls: string[] = [];
-    const activities = baseActivities();
-    activities.updateAppointmentStatus = async ({ status }) => { calls.push(status); };
-    activities.releaseAppointmentSlot = async () => { calls.push('released'); };
-    const worker = await Worker.create({ connection: env.nativeConnection, taskQueue: 'cancel-test', workflowsPath: require.resolve('../src/worker/workflows/index.ts'), activities });
+    const activities = baseActivities(calls);
+    const { worker, handle } = await startWorkflow(activities, 30 * 3_600_000);
     await worker.runUntil(async () => {
-      const handle = await env.client.workflow.start(appointmentReminderWorkflow, {
-        workflowId: 'reminder-cancel-test', taskQueue: 'cancel-test',
-        args: [{ appointmentId: 'apt-cancel', appointmentTime: new Date(Date.now() + 86_400_000).toISOString(), reminderLeadTimeSeconds: 30 }]
-      });
-      await handle.signal(cancelAppointment);
-      expect((await handle.result()).status).toBe('CANCELLED');
-    });
-    expect(calls).toEqual(['CANCELLED', 'released']);
-  });
-
-  it('compensates a reservation after a permanent appointment creation failure', async () => {
-    const calls: string[] = [];
-    const activities = baseActivities();
-    activities.reserveAppointmentSlot = async () => { calls.push('reserved'); };
-    activities.createAppointment = async () => { throw ApplicationFailure.nonRetryable('rejected', 'CREATE_APPOINTMENT_REJECTED'); };
-    activities.releaseAppointmentSlot = async () => { calls.push('released'); };
-    const worker = await Worker.create({ connection: env.nativeConnection, taskQueue: 'compensation-test', workflowsPath: require.resolve('../src/worker/workflows/index.ts'), activities });
-    await worker.runUntil(async () => {
-      const handle = await env.client.workflow.start(appointmentBookingWorkflow, {
-        workflowId: 'booking-compensation-test', taskQueue: 'compensation-test',
-        args: [{ appointmentId: 'apt-fail', patientId: 'patient-001', doctorId: 'doctor-001', appointmentTime: new Date(Date.now() + 60_000).toISOString(), reminderLeadTimeSeconds: 30 }]
-      });
-      await expect(handle.result()).rejects.toThrow();
-    });
-    expect(calls).toEqual(['reserved', 'released']);
-  });
-
-  it('retries a transient notification failure and succeeds', async () => {
-    let attempts = 0;
-    const activities = baseActivities();
-    activities.sendAppointmentReminder = async () => { attempts += 1; if (attempts === 1) throw new Error('temporary 503'); };
-    const worker = await Worker.create({ connection: env.nativeConnection, taskQueue: 'retry-test', workflowsPath: require.resolve('../src/worker/workflows/index.ts'), activities });
-    await worker.runUntil(async () => {
-      const handle = await env.client.workflow.start(appointmentReminderWorkflow, {
-        workflowId: 'reminder-retry-test', taskQueue: 'retry-test',
-        args: [{ appointmentId: 'apt-retry', appointmentTime: new Date(Date.now() + 1_000).toISOString(), reminderLeadTimeSeconds: 30 }]
-      });
-      await env.sleep('2 seconds');
+      await env.sleep('1 second');
       await handle.signal(confirmAppointment);
-      await handle.result();
+      await env.sleep('31 hours'); // past the appointment time
+      await handle.signal(markAppointmentNoShow);
+      const result = await handle.result();
+      expect(result.appointmentStatus).toBe('NO_SHOW');
+      expect(result.reservationStatus).toBe('RELEASED');
     });
-    expect(attempts).toBe(2);
+  });
+
+  it('cancelling while BOOKED releases the slot and cancels both reminders (tests 13, 15, 16)', async () => {
+    const calls: string[] = [];
+    const activities = baseActivities(calls);
+    const { worker, handle } = await startWorkflow(activities, 30 * 3_600_000);
+    await worker.runUntil(async () => {
+      await env.sleep('1 second');
+      await handle.signal(cancelAppointment);
+      const result = await handle.result();
+      expect(result.appointmentStatus).toBe('CANCELLED');
+      expect(result.reservationStatus).toBe('RELEASED');
+    });
+    expect(calls).toContain('cancelReminder:CONFIRMATION_REMINDER');
+    expect(calls).toContain('cancelReminder:UPCOMING_REMINDER');
+    expect(calls).toContain('releaseSlot');
+  });
+
+  it('cancelling while CONFIRMED releases the slot and cancels the upcoming reminder (test 14)', async () => {
+    const calls: string[] = [];
+    const activities = baseActivities(calls);
+    const { worker, handle } = await startWorkflow(activities, 30 * 3_600_000);
+    await worker.runUntil(async () => {
+      await env.sleep('1 second');
+      await handle.signal(confirmAppointment);
+      await env.sleep('1 second');
+      await handle.signal(cancelAppointment);
+      const result = await handle.result();
+      expect(result.appointmentStatus).toBe('CANCELLED');
+      expect(result.reservationStatus).toBe('RELEASED');
+    });
+    expect(calls).toContain('cancelReminder:UPCOMING_REMINDER');
+  });
+
+  it('no response by the confirmation deadline becomes NO_RESPONSE, releases the slot, and never sends the 2h reminder (tests 17-19)', async () => {
+    const calls: string[] = [];
+    const activities = baseActivities(calls);
+    const { worker, handle } = await startWorkflow(activities, 30 * 3_600_000);
+    await worker.runUntil(async () => {
+      await env.sleep('7 hours'); // past the 6h confirmation reminder mark
+      expect(calls).toContain('sendReminder:CONFIRMATION_REMINDER');
+      await env.sleep('19 hours'); // now past the 24h deadline, still no response
+      const result = await handle.result();
+      expect(result.appointmentStatus).toBe('NO_RESPONSE');
+      expect(result.reservationStatus).toBe('RELEASED');
+    });
+    expect(calls).not.toContain('sendReminder:UPCOMING_REMINDER');
+  });
+
+  it('a booking made after its own confirmation deadline is auto-confirmed (test 23, late-booking policy)', async () => {
+    const calls: string[] = [];
+    const activities = baseActivities(calls);
+    // Appointment only 3 hours out: the 6-hour deadline has already passed at booking time.
+    const { worker, handle } = await startWorkflow(activities, 3 * 3_600_000);
+    await worker.runUntil(async () => {
+      await env.sleep('1 second');
+      const state = await handle.query(appointmentStateQuery);
+      expect(state.appointmentStatus).toBe('CONFIRMED');
+    });
+    expect(calls).toContain('appointment:CONFIRMED');
+    expect(calls).not.toContain('appointment:NO_RESPONSE');
+    expect(calls).toContain('cancelReminder:CONFIRMATION_REMINDER');
+  });
+
+  it('does not act on a completion signal before the appointment time actually arrives', async () => {
+    const calls: string[] = [];
+    const activities = baseActivities(calls);
+    const { worker, handle } = await startWorkflow(activities, 30 * 3_600_000);
+    await worker.runUntil(async () => {
+      await env.sleep('1 second');
+      await handle.signal(confirmAppointment);
+      await env.sleep('1 second');
+      // Signalled hours before the appointment time (still well before the
+      // 2h upcoming-reminder mark) — must not be acted on yet.
+      await handle.signal(markAppointmentCompleted);
+      await env.sleep('1 second');
+      const state = await handle.query(appointmentStateQuery);
+      expect(state.appointmentStatus).toBe('CONFIRMED');
+    });
+    expect(calls).not.toContain('appointment:COMPLETED');
+  });
+
+  it('a cancel racing a confirm at the same instant wins (signal precedence)', async () => {
+    const calls: string[] = [];
+    const activities = baseActivities(calls);
+    const { worker, handle } = await startWorkflow(activities, 30 * 3_600_000);
+    await worker.runUntil(async () => {
+      await env.sleep('1 second');
+      await handle.signal(confirmAppointment);
+      await handle.signal(cancelAppointment);
+      const result = await handle.result();
+      expect(result.appointmentStatus).toBe('CANCELLED');
+    });
+  });
+
+  it('an exhausted reminder-send failure does not change the appointment status or crash the workflow (test 25)', async () => {
+    const calls: string[] = [];
+    const activities = baseActivities(calls);
+    activities.sendReminder = async ({ type }) => {
+      calls.push(`sendReminder:${type}`);
+      throw new Error('provider permanently down');
+    };
+    const { worker, handle } = await startWorkflow(activities, 30 * 3_600_000);
+    await worker.runUntil(async () => {
+      await env.sleep('7 hours');
+      const state = await handle.query(appointmentStateQuery);
+      // The send failed, but the appointment must remain BOOKED, not error out.
+      expect(state.appointmentStatus).toBe('BOOKED');
+    });
+    expect(calls).toContain('sendReminder:CONFIRMATION_REMINDER');
   });
 });

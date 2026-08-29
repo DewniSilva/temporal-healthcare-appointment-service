@@ -28,3 +28,10 @@ export function assertCanAct(user: AuthenticatedUser, appointment: AppointmentAc
   if (user.role === 'PATIENT' && user.patientId === appointment.patientId) return;
   throw new AppError(403, 'FORBIDDEN', 'You cannot modify this appointment.');
 }
+
+/** For doctor/admin-only actions (mark completed / mark no-show). */
+export function assertCanManage(user: AuthenticatedUser, appointment: AppointmentAccessRecord): void {
+  if (user.role === 'ADMIN') return;
+  if (user.role === 'DOCTOR' && user.doctorId === appointment.doctorId) return;
+  throw new AppError(403, 'FORBIDDEN', 'You cannot manage this appointment.');
+}

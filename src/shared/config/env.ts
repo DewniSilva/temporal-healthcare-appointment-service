@@ -34,7 +34,17 @@ const envSchema = z.object({
   JWT_EXPIRES_IN: z.string().default('1h'),
   PORT: z.coerce.number().int().min(1).max(65535).default(3000),
   CORS_ORIGIN: z.string().url().default('http://localhost:3000'),
-  REMINDER_LEAD_TIME_SECONDS: z.coerce.number().int().min(0).default(7_200),
+  // The three-tier confirmation/reminder policy (spec: 24h reminder, 6h
+  // deadline, 2h upcoming reminder). Kept as separate hour offsets rather
+  // than a single lead time, since each fires a different lifecycle event.
+  CONFIRMATION_REMINDER_HOURS_BEFORE: z.coerce.number().int().min(0).default(24),
+  CONFIRMATION_DEADLINE_HOURS_BEFORE: z.coerce.number().int().min(0).default(6),
+  UPCOMING_REMINDER_HOURS_BEFORE: z.coerce.number().int().min(0).default(2),
+  // Only RELEASE_SLOT is implemented; kept as an explicit, validated config
+  // value (rather than a hardcoded literal) so the policy is documented and
+  // future alternatives fail closed instead of being silently ignored.
+  NO_RESPONSE_POLICY: z.enum(['RELEASE_SLOT']).default('RELEASE_SLOT'),
+  REMINDER_MAX_ATTEMPTS: z.coerce.number().int().min(1).default(5),
   RESEND_API_KEY: optionalString,
   RESEND_FROM_EMAIL: z.string().min(3).default('Healthcare Appointments <onboarding@resend.dev>'),
   REMINDER_EMAIL_TO: optionalEmail,
@@ -48,8 +58,18 @@ const envSchema = z.object({
   // How long past an appointment's own end time a still-present slot
   // reservation is treated as orphaned (crashed worker, terminated workflow)
   // rather than mid-cleanup.
-  ORPHANED_RESERVATION_GRACE_MINUTES: z.coerce.number().int().min(0).default(60)
-});
+  ORPHANED_RESERVATION_GRACE_MINUTES: z.coerce.number().int().min(0).default(60),
+  // Caps rows returned per reconciliation query per sweep, so one pass can't
+  // balloon its Workflow history; a busier backlog is handled over several
+  // scheduled sweeps instead of one huge one.
+  RECONCILIATION_BATCH_SIZE: z.coerce.number().int().min(1).default(100)
+}).refine(
+  (env) => env.CONFIRMATION_DEADLINE_HOURS_BEFORE < env.CONFIRMATION_REMINDER_HOURS_BEFORE,
+  { message: 'CONFIRMATION_DEADLINE_HOURS_BEFORE must be less than CONFIRMATION_REMINDER_HOURS_BEFORE', path: ['CONFIRMATION_DEADLINE_HOURS_BEFORE'] }
+).refine(
+  (env) => env.UPCOMING_REMINDER_HOURS_BEFORE < env.CONFIRMATION_DEADLINE_HOURS_BEFORE,
+  { message: 'UPCOMING_REMINDER_HOURS_BEFORE must be less than CONFIRMATION_DEADLINE_HOURS_BEFORE', path: ['UPCOMING_REMINDER_HOURS_BEFORE'] }
+);
 
 export type Env = z.infer<typeof envSchema>;
 let cached: Env | undefined;

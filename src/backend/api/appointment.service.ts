@@ -4,40 +4,64 @@ import { prisma } from '../../shared/database/prisma';
 import { getEnv } from '../../shared/config/env';
 import { temporalClient } from '../temporal/client';
 import { appointmentStateQuery } from '../../shared/temporal/queries';
-import { cancelAppointment, confirmAppointment } from '../../shared/temporal/signals';
-import { bookingWorkflowId, reminderWorkflowId, type AppointmentBookingWorkflow } from '../../shared/temporal/contracts';
+import {
+  cancelAppointment,
+  confirmAppointment,
+  markAppointmentCompleted,
+  markAppointmentNoShow
+} from '../../shared/temporal/signals';
+import { appointmentWorkflowId, type AppointmentWorkflow } from '../../shared/temporal/contracts';
 import { AppError } from './errors';
 import type { AuthenticatedUser } from '../auth/auth.service';
-import { assertCanAct, assertCanCreate, assertCanRead } from '../auth/authorization';
+import { assertCanAct, assertCanCreate, assertCanManage, assertCanRead } from '../auth/authorization';
 import { logger } from '../../shared/logging/logger';
 import { appointmentIdForIdempotencyKey } from './idempotency';
-import { appointmentOverlapWindow } from '../../shared/appointmentSlots';
+import { appointmentOverlapWindow, extractTzOffsetMinutes } from '../../shared/appointmentSlots';
 
 export interface CreateAppointmentRequest { patientId: string; doctorId: string; appointmentTime: string; }
+
+export type SignalAction = 'confirm' | 'cancel' | 'complete' | 'no-show';
+
+const SIGNAL_BY_ACTION = {
+  confirm: confirmAppointment,
+  cancel: cancelAppointment,
+  complete: markAppointmentCompleted,
+  'no-show': markAppointmentNoShow
+} as const;
 
 export async function startAppointment(input: CreateAppointmentRequest, user: AuthenticatedUser, requestId: string, idempotencyKey: string) {
   assertCanCreate(user, input.patientId);
   const appointmentId = appointmentIdForIdempotencyKey(user.userId, idempotencyKey);
-  const workflowId = bookingWorkflowId(appointmentId);
+  const workflowId = appointmentWorkflowId(appointmentId);
   const overlapWindow = appointmentOverlapWindow(input.appointmentTime);
   const occupied = await prisma.slotReservation.findFirst({
     where: {
       doctorId: input.doctorId,
       appointmentId: { not: appointmentId },
+      status: 'RESERVED',
       appointmentTime: { gt: overlapWindow.after, lt: overlapWindow.before }
     },
     select: { appointmentId: true }
   });
   if (occupied) throw new AppError(409, 'DOCTOR_UNAVAILABLE', 'The requested 20-minute appointment slot is unavailable.');
+
+  const env = getEnv();
   try {
-    const handle = await temporalClient().workflow.start<AppointmentBookingWorkflow>('appointmentBookingWorkflow', {
-      taskQueue: getEnv().TEMPORAL_TASK_QUEUE,
+    const handle = await temporalClient().workflow.start<AppointmentWorkflow>('appointmentWorkflow', {
+      taskQueue: env.TEMPORAL_TASK_QUEUE,
       workflowId,
       // Reject this business operation whether the earlier execution is open
       // or closed; a client retry must never create a new Workflow run.
       workflowIdConflictPolicy: WorkflowIdConflictPolicy.FAIL,
       workflowIdReusePolicy: WorkflowIdReusePolicy.REJECT_DUPLICATE,
-      args: [{ ...input, appointmentId, reminderLeadTimeSeconds: getEnv().REMINDER_LEAD_TIME_SECONDS }]
+      args: [{
+        ...input,
+        appointmentId,
+        appointmentTzOffsetMinutes: extractTzOffsetMinutes(input.appointmentTime),
+        confirmationReminderHoursBefore: env.CONFIRMATION_REMINDER_HOURS_BEFORE,
+        confirmationDeadlineHoursBefore: env.CONFIRMATION_DEADLINE_HOURS_BEFORE,
+        upcomingReminderHoursBefore: env.UPCOMING_REMINDER_HOURS_BEFORE
+      }]
     });
     logger.info({ event: 'appointment_booking_started', requestId, appointmentId, workflowId, runId: handle.firstExecutionRunId });
     return { appointmentId, workflowId, status: 'STARTED' as const };
@@ -60,20 +84,33 @@ export async function getAuthorizedAppointment(id: string, user: AuthenticatedUs
 export async function getWorkflowState(id: string, user: AuthenticatedUser) {
   await getAuthorizedAppointment(id, user);
   try {
-    return await temporalClient().workflow.getHandle(reminderWorkflowId(id)).query(appointmentStateQuery);
+    return await temporalClient().workflow.getHandle(appointmentWorkflowId(id)).query(appointmentStateQuery);
   } catch {
     throw new AppError(503, 'WORKFLOW_NOT_READY', 'The appointment workflow is not ready for queries yet.');
   }
 }
 
-export async function signalAppointment(id: string, action: 'confirm' | 'cancel', user: AuthenticatedUser, requestId: string): Promise<void> {
+const PRECONDITION_BY_ACTION: Record<SignalAction, ReadonlySet<string>> = {
+  confirm: new Set(['BOOKED']),
+  cancel: new Set(['BOOKED', 'CONFIRMED']),
+  complete: new Set(['CONFIRMED']),
+  'no-show': new Set(['CONFIRMED'])
+};
+
+export async function signalAppointment(id: string, action: SignalAction, user: AuthenticatedUser, requestId: string): Promise<void> {
   const appointment = await getAuthorizedAppointment(id, user);
-  assertCanAct(user, appointment);
-  if (appointment.status === 'CANCELLED' && action === 'confirm') throw new AppError(409, 'INVALID_STATUS_TRANSITION', 'A cancelled appointment cannot be confirmed.');
+  if (action === 'complete' || action === 'no-show') {
+    assertCanManage(user, appointment);
+  } else {
+    assertCanAct(user, appointment);
+  }
+  if (!PRECONDITION_BY_ACTION[action].has(appointment.status)) {
+    throw new AppError(409, 'INVALID_STATUS_TRANSITION', `Cannot ${action} an appointment that is currently ${appointment.status}.`);
+  }
   try {
-    const handle = temporalClient().workflow.getHandle(reminderWorkflowId(id));
-    await handle.signal(action === 'confirm' ? confirmAppointment : cancelAppointment);
-    logger.info({ event: `appointment_${action}_signalled`, requestId, appointmentId: id, workflowId: reminderWorkflowId(id), actorUserId: user.userId });
+    const handle = temporalClient().workflow.getHandle(appointmentWorkflowId(id));
+    await handle.signal(SIGNAL_BY_ACTION[action]);
+    logger.info({ event: `appointment_${action}_signalled`, requestId, appointmentId: id, workflowId: appointmentWorkflowId(id), actorUserId: user.userId });
   } catch {
     throw new AppError(503, 'WORKFLOW_NOT_READY', 'The appointment workflow is not ready for signals yet.');
   }
