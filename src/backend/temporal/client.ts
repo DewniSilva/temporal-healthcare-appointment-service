@@ -1,5 +1,7 @@
 import { Client, Connection } from '@temporalio/client';
 import { getEnv } from '../../shared/config/env';
+import { OpenTelemetryWorkflowClientInterceptor } from '@temporalio/interceptors-opentelemetry';
+import { temporalConnectionSecurity } from '../../shared/temporal/connectionOptions';
 
 let connection: Connection | undefined;
 let client: Client | undefined;
@@ -12,10 +14,13 @@ export async function connectTemporal(maxAttempts = 10): Promise<Client> {
     try {
       connection = await Connection.connect({
         address: env.TEMPORAL_ADDRESS,
-        tls: env.TEMPORAL_API_KEY ? true : env.TEMPORAL_TLS,
-        apiKey: env.TEMPORAL_API_KEY
+        ...temporalConnectionSecurity()
       });
-      client = new Client({ connection, namespace: env.TEMPORAL_NAMESPACE });
+      client = new Client({
+        connection,
+        namespace: env.TEMPORAL_NAMESPACE,
+        interceptors: { workflow: [new OpenTelemetryWorkflowClientInterceptor()] }
+      });
       return client;
     } catch (error) {
       lastError = error;

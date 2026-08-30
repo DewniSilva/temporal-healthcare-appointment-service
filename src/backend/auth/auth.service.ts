@@ -26,13 +26,18 @@ export async function login(email: string, password: string): Promise<{ token: s
     patientId: user.patient?.id,
     doctorId: user.doctor?.id
   };
-  const token = jwt.sign(claims, env.JWT_SECRET, { expiresIn: env.JWT_EXPIRES_IN } as SignOptions);
+  const token = jwt.sign(claims, env.JWT_SECRET, {
+    expiresIn: env.JWT_EXPIRES_IN,
+    issuer: env.JWT_ISSUER,
+    audience: env.JWT_AUDIENCE
+  } as SignOptions);
   return { token, expiresIn: env.JWT_EXPIRES_IN };
 }
 
 export function verifyToken(token: string): AuthenticatedUser {
   try {
-    const payload = jwt.verify(token, getEnv().JWT_SECRET);
+    const env = getEnv();
+    const payload = jwt.verify(token, env.JWT_SECRET, { issuer: env.JWT_ISSUER, audience: env.JWT_AUDIENCE });
     if (typeof payload === 'string' || !payload.sub && !('userId' in payload)) throw new Error('Invalid token payload');
     return payload as unknown as AuthenticatedUser;
   } catch {

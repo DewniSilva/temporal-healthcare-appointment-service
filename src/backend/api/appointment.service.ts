@@ -17,6 +17,7 @@ import { assertCanAct, assertCanCreate, assertCanManage, assertCanRead } from '.
 import { logger } from '../../shared/logging/logger';
 import { appointmentIdForIdempotencyKey } from './idempotency';
 import { appointmentOverlapWindow, extractTzOffsetMinutes } from '../../shared/appointmentSlots';
+import { trace } from '@opentelemetry/api';
 
 export interface CreateAppointmentRequest { patientId: string; doctorId: string; appointmentTime: string; }
 
@@ -30,6 +31,12 @@ const SIGNAL_BY_ACTION = {
 } as const;
 
 export async function startAppointment(input: CreateAppointmentRequest, user: AuthenticatedUser, requestId: string, idempotencyKey: string) {
+  trace.getActiveSpan()?.setAttributes({
+    'operation': 'appointment.start',
+    'appointment.state': 'REQUESTED',
+    'temporal.workflow_type': 'appointmentWorkflow',
+    'user.role': user.role
+  });
   assertCanCreate(user, input.patientId);
   const appointmentId = appointmentIdForIdempotencyKey(user.userId, idempotencyKey);
   const workflowId = appointmentWorkflowId(appointmentId);

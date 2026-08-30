@@ -21,6 +21,14 @@ docker compose up --build
 - Temporal UI: http://localhost:8080
 - PostgreSQL and Temporal gRPC are internal-only (not host-published).
 
+Production images, deployment order, supported hosting targets, TLS/secrets requirements, observability, alerting, and rollback procedures are documented in [docs/operations.md](docs/operations.md). Database migration and demo seeding are separate one-shot Compose services; neither runs inside API startup.
+
+Optional local metrics, dashboards, alerts, and OTLP trace export can be started with:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.observability.yml --profile observability up --build
+```
+
 Local demo accounts all use `DemoPass123!`:
 
 | Role | Email | Linked record |

@@ -15,7 +15,12 @@ export interface ReserveInput {
 }
 
 function isConstraintViolation(error: unknown): boolean {
-  return error instanceof Prisma.PrismaClientKnownRequestError && (error.code === 'P2002' || error.code === 'P2004');
+  if (error instanceof Prisma.PrismaClientKnownRequestError) return error.code === 'P2002' || error.code === 'P2004';
+  // Prisma 6 currently wraps PostgreSQL exclusion-constraint SQLSTATE 23P01
+  // as UnknownRequestError rather than P2004. Match only the named slot
+  // constraint/error class so unrelated database failures still retry/fail.
+  return error instanceof Prisma.PrismaClientUnknownRequestError
+    && /(23P01|SlotReservation_doctor_20_minute_excl|exclusion constraint)/.test(error.message);
 }
 
 export const reservationRepository = {

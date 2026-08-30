@@ -2,6 +2,7 @@ import { prisma } from '../../shared/database/prisma';
 import { assertValidAppointmentTransition } from '../../shared/appointment/appointment.state-machine';
 import type { AppointmentStatus, TransitionActor } from '../../shared/appointment/appointment.types';
 import { auditRepository } from '../audit/audit.repository';
+import { recordAppointmentTransition } from '../../shared/observability/metrics';
 
 export interface CreateRequestedInput {
   appointmentId: string;
@@ -30,6 +31,7 @@ export const appointmentRepository = {
 
   // A stable primary key makes this Activity retry-safe.
   async createRequested(input: CreateRequestedInput): Promise<void> {
+    const exists = await prisma.appointment.findUnique({ where: { id: input.appointmentId }, select: { id: true } });
     await prisma.appointment.upsert({
       where: { id: input.appointmentId },
       update: {},
@@ -42,6 +44,7 @@ export const appointmentRepository = {
         status: 'REQUESTED'
       }
     });
+    if (!exists) recordAppointmentTransition('REQUESTED');
   },
 
   async getForReminder(appointmentId: string) {
@@ -85,6 +88,8 @@ export const appointmentRepository = {
       if (after?.status === input.to) return;
       throw new Error(`Concurrent write conflict transitioning appointment ${input.appointmentId} to ${input.to}.`);
     }
+
+    recordAppointmentTransition(input.to);
 
     await auditRepository.record({
       appointmentId: input.appointmentId,

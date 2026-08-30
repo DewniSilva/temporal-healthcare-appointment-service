@@ -47,7 +47,8 @@ async function transition(
 export const reminderRepository = {
   // Idempotent: called once when the appointment becomes BOOKED. A retry
   // finds the row already created and does nothing.
-  async schedule(appointmentId: string, type: ReminderType, scheduledAt: string): Promise<void> {
+  async schedule(appointmentId: string, type: ReminderType, scheduledAt: string): Promise<boolean> {
+    const exists = await prisma.reminder.findUnique({ where: { appointmentId_type: { appointmentId, type } }, select: { id: true } });
     await prisma.reminder.upsert({
       where: { appointmentId_type: { appointmentId, type } },
       update: {},
@@ -59,6 +60,7 @@ export const reminderRepository = {
         scheduledAt: new Date(scheduledAt)
       }
     });
+    return !exists;
   },
 
   async get(appointmentId: string, type: ReminderType) {
@@ -82,12 +84,12 @@ export const reminderRepository = {
     await transition(appointmentId, type, 'SENDING', { attemptCount: { increment: 1 } });
   },
 
-  async markSent(appointmentId: string, type: ReminderType, providerMessageId: string): Promise<void> {
-    await transition(appointmentId, type, 'SENT', { sentAt: new Date(), providerMessageId });
+  async markSent(appointmentId: string, type: ReminderType, providerMessageId: string): Promise<boolean> {
+    return transition(appointmentId, type, 'SENT', { sentAt: new Date(), providerMessageId });
   },
 
-  async markFailed(appointmentId: string, type: ReminderType, lastError: string): Promise<void> {
-    await transition(appointmentId, type, 'FAILED', { failedAt: new Date(), lastError });
+  async markFailed(appointmentId: string, type: ReminderType, lastError: string): Promise<boolean> {
+    return transition(appointmentId, type, 'FAILED', { failedAt: new Date(), lastError });
   },
 
   async markCancelled(appointmentId: string, type: ReminderType): Promise<void> {

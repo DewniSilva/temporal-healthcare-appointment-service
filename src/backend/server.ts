@@ -6,6 +6,7 @@ import { ensureReconciliationSchedule } from './temporal/reconciliationSchedule'
 import { connectRedis, closeRedis } from './redis/client';
 import { prisma } from '../shared/database/prisma';
 import { logger } from '../shared/logging/logger';
+import { shutdownTelemetry } from '../shared/observability/telemetry';
 
 async function main(): Promise<void> {
   const env = getEnv();
@@ -24,7 +25,7 @@ function installShutdown(server: Server): void {
     stopping = true;
     logger.info({ event: 'backend_shutdown_started', signal });
     server.close(async () => {
-      await Promise.allSettled([prisma.$disconnect(), closeTemporal(), closeRedis()]);
+      await Promise.allSettled([prisma.$disconnect(), closeTemporal(), closeRedis(), shutdownTelemetry()]);
       logger.info({ event: 'backend_stopped' });
       process.exit(0);
     });
@@ -36,6 +37,6 @@ function installShutdown(server: Server): void {
 
 main().catch(async (error) => {
   logger.fatal({ event: 'backend_fatal', error });
-  await Promise.allSettled([prisma.$disconnect(), closeTemporal(), closeRedis()]);
+  await Promise.allSettled([prisma.$disconnect(), closeTemporal(), closeRedis(), shutdownTelemetry()]);
   process.exitCode = 1;
 });

@@ -30,8 +30,14 @@ const envSchema = z.object({
   TEMPORAL_TLS: booleanEnvVar(false),
   // Set for Temporal Cloud (or any server using API-key auth); enables TLS.
   TEMPORAL_API_KEY: optionalString,
+  TEMPORAL_TLS_CLIENT_CERT_PATH: optionalString,
+  TEMPORAL_TLS_CLIENT_KEY_PATH: optionalString,
+  TEMPORAL_TLS_CA_PATH: optionalString,
+  TEMPORAL_TLS_SERVER_NAME: optionalString,
   JWT_SECRET: z.string().min(32),
   JWT_EXPIRES_IN: z.string().default('1h'),
+  JWT_ISSUER: z.string().min(1).default('temporal-healthcare-appointments'),
+  JWT_AUDIENCE: z.string().min(1).default('temporal-healthcare-users'),
   PORT: z.coerce.number().int().min(1).max(65535).default(3000),
   CORS_ORIGIN: z.string().url().default('http://localhost:3000'),
   // IANA zone the clinic's recurring doctor schedules are defined in (wall
@@ -53,6 +59,13 @@ const envSchema = z.object({
   RESEND_FROM_EMAIL: z.string().min(3).default('Healthcare Appointments <onboarding@resend.dev>'),
   REMINDER_EMAIL_TO: optionalEmail,
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
+  OTEL_ENABLED: booleanEnvVar(false),
+  OTEL_SERVICE_NAME: z.string().min(1).default('temporal-healthcare-appointments'),
+  OTEL_EXPORTER_OTLP_ENDPOINT: optionalString,
+  METRICS_ENABLED: booleanEnvVar(true),
+  METRICS_HOST: z.string().min(1).default('0.0.0.0'),
+  METRICS_PORT: z.coerce.number().int().min(1).max(65535).default(9464),
+  TEMPORAL_METRICS_PORT: z.coerce.number().int().min(1).max(65535).default(9465),
   DEMO_FAILURE_MODE: z.enum(['none', 'notification-once', 'create-permanent']).default('none'),
   // Backs express-rate-limit so limits are shared and correct across replicas
   // instead of being tracked per-process.
@@ -99,16 +112,30 @@ let cached: Env | undefined;
 // secret anyone can read in this repo's history.
 const DEMO_JWT_SECRET = 'local-demo-secret-change-before-production-123456';
 
+export function validateEnv(input: NodeJS.ProcessEnv): Env {
+  const parsed = envSchema.parse(input);
+  if (parsed.NODE_ENV === 'production') {
+    const problems: string[] = [];
+    if (parsed.JWT_SECRET === DEMO_JWT_SECRET || parsed.JWT_SECRET.length < 48) problems.push('JWT_SECRET must be a unique secret of at least 48 characters');
+    const expiry = /^(\d+)(s|m|h)$/.exec(parsed.JWT_EXPIRES_IN);
+    const multiplier = expiry?.[2] === 'h' ? 3600 : expiry?.[2] === 'm' ? 60 : 1;
+    if (!expiry || Number(expiry[1]) * multiplier > 3600) problems.push('JWT_EXPIRES_IN must be a controlled duration no longer than one hour');
+    if (!parsed.DATABASE_URL.includes('sslmode=verify-full')) problems.push('DATABASE_URL must enforce sslmode=verify-full');
+    if (!parsed.REDIS_URL.startsWith('rediss://')) problems.push('REDIS_URL must use rediss://');
+    if (!parsed.TEMPORAL_API_KEY && !parsed.TEMPORAL_TLS && !parsed.TEMPORAL_TLS_CLIENT_CERT_PATH) problems.push('Temporal TLS or API-key authentication must be enabled');
+    if (parsed.OTEL_ENABLED && !parsed.OTEL_EXPORTER_OTLP_ENDPOINT) problems.push('OTEL_EXPORTER_OTLP_ENDPOINT is required when tracing is enabled');
+    if (!parsed.RESEND_API_KEY) problems.push('RESEND_API_KEY is required');
+    if (parsed.REMINDER_EMAIL_TO) problems.push('REMINDER_EMAIL_TO is a local testing override and must be unset');
+    if (problems.length) throw new Error(`Unsafe production configuration: ${problems.join('; ')}`);
+  }
+  const certAndKey = Boolean(parsed.TEMPORAL_TLS_CLIENT_CERT_PATH) === Boolean(parsed.TEMPORAL_TLS_CLIENT_KEY_PATH);
+  if (!certAndKey) throw new Error('TEMPORAL_TLS_CLIENT_CERT_PATH and TEMPORAL_TLS_CLIENT_KEY_PATH must be set together');
+  return parsed;
+}
+
 export function getEnv(): Env {
   if (!cached) {
-    const parsed = envSchema.parse(process.env);
-    if (parsed.NODE_ENV === 'production' && parsed.JWT_SECRET === DEMO_JWT_SECRET) {
-      throw new Error(
-        'JWT_SECRET is set to the local-development default. Set a real secret ' +
-        '(from your secrets manager) before running with NODE_ENV=production.'
-      );
-    }
-    cached = parsed;
+    cached = validateEnv(process.env);
   }
   return cached;
 }

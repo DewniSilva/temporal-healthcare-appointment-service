@@ -10,6 +10,7 @@ import type {
   RetryableReminder,
   StuckAppointment
 } from '../../shared/temporal/contracts';
+import { recordReconciliationRepair, recordReconciliationRun } from '../../shared/observability/metrics';
 
 /** An appointment's own slot has definitely elapsed once this much time has passed since it started. */
 function staleCutoff(graceMinutes: number): Date {
@@ -63,12 +64,14 @@ export const reconciliationActivities: ReconciliationActivities = {
   // itself failed outside its own retry budget, or the Workflow was
   // explicitly terminated before it could run, or a manual/external change.
   async findStaleReservations(input: ReconciliationInput): Promise<string[]> {
+    recordReconciliationRun();
     const rows = await prisma.slotReservation.findMany({
       where: { status: 'RESERVED', appointment: { status: { in: ['NO_RESPONSE', 'CANCELLED', 'COMPLETED', 'NO_SHOW'] } } },
       select: { appointmentId: true },
       take: input.batchSize
     });
     if (rows.length > 0) {
+      recordReconciliationRepair('stale_reservation', rows.length);
       logger.warn({ event: 'reconciliation_stale_reservations_found', count: rows.length, appointmentIds: rows.map((r) => r.appointmentId) });
     }
     return rows.map((row) => row.appointmentId);
@@ -81,6 +84,7 @@ export const reconciliationActivities: ReconciliationActivities = {
       take: input.batchSize
     });
     if (rows.length > 0) {
+      recordReconciliationRepair('orphaned_reminder', rows.length);
       logger.warn({ event: 'reconciliation_orphaned_reminders_found', count: rows.length, appointmentIds: rows.map((r) => r.appointmentId) });
     }
     return rows.map((row) => ({ appointmentId: row.appointmentId, type: row.type }));
@@ -97,6 +101,7 @@ export const reconciliationActivities: ReconciliationActivities = {
       take: batchSize
     });
     if (rows.length > 0) {
+      recordReconciliationRepair('stuck_booked_detected', rows.length);
       logger.error({ event: 'reconciliation_stuck_booked_appointments', count: rows.length, appointmentIds: rows.map((row) => row.id) });
     }
     return rows.map((row) => ({ appointmentId: row.id, appointmentTime: row.appointmentTime.toISOString() }));
@@ -114,6 +119,7 @@ export const reconciliationActivities: ReconciliationActivities = {
       take: batchSize
     });
     if (rows.length > 0) {
+      recordReconciliationRepair('stuck_confirmed_detected', rows.length);
       logger.error({ event: 'reconciliation_stuck_confirmed_appointments', count: rows.length, appointmentIds: rows.map((row) => row.id) });
     }
     return rows.map((row) => ({ appointmentId: row.id, appointmentTime: row.appointmentTime.toISOString() }));

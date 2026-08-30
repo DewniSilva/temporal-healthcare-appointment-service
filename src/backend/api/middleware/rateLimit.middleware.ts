@@ -10,6 +10,7 @@ import type { Request } from 'express';
 import { redisClient } from '../../redis/client';
 import { getEnv } from '../../../shared/config/env';
 import { logger } from '../../../shared/logging/logger';
+import { recordRateLimitBlocked, recordRateLimitRedisError, recordRateLimitRequest } from '../../../shared/observability/metrics';
 
 export type RateLimitPolicyName =
   | 'login-ip'
@@ -80,7 +81,10 @@ export function createRateLimiter({ name, windowMs, limit, keyGenerator, store }
   return rateLimit({
     windowMs,
     limit,
-    keyGenerator,
+    keyGenerator: async (req, res) => {
+      recordRateLimitRequest(name);
+      return keyGenerator(req, res);
+    },
     standardHeaders: 'draft-8',
     legacyHeaders: false,
     store: selectedStore,
@@ -88,10 +92,14 @@ export function createRateLimiter({ name, windowMs, limit, keyGenerator, store }
     // transient store outage; readiness still reports Redis unavailable.
     passOnStoreError: true,
     logger: {
-      error: (error, message) => logger.warn({ event: 'rate_limit_store_error', policy: name, error, message }),
+      error: (error, message) => {
+        recordRateLimitRedisError(name);
+        logger.warn({ event: 'rate_limit_store_error', policy: name, error, message });
+      },
       warn: (warning, message) => logger.warn({ event: 'rate_limit_warning', policy: name, warning, message })
     },
     handler: (req, res) => {
+      recordRateLimitBlocked(name);
       const retryAfter = res.getHeader('retry-after');
       logger.warn({
         event: 'rate_limit_exceeded',

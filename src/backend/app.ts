@@ -13,6 +13,7 @@ import { prisma } from '../shared/database/prisma';
 import { logger } from '../shared/logging/logger';
 import { temporalClient } from './temporal/client';
 import { redisClient } from './redis/client';
+import { httpMetrics } from './api/middleware/httpMetrics.middleware';
 
 export function createApp() {
   const env = getEnv();
@@ -23,6 +24,7 @@ export function createApp() {
   app.use(cors({ origin: env.CORS_ORIGIN, methods: ['GET', 'POST'], allowedHeaders: ['authorization', 'content-type', 'idempotency-key', 'x-request-id'] }));
   app.use(express.json({ limit: '32kb', strict: true }));
   app.use(requestId);
+  app.use(httpMetrics);
   app.use((req, res, next) => {
     const started = Date.now();
     if (req.path !== '/health' && req.path !== '/liveness' && req.path !== '/readiness') {

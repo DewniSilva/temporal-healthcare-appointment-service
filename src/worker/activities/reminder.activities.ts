@@ -12,6 +12,8 @@ import type {
 import { appointmentRepository } from '../appointment/appointment.repository';
 import { reminderRepository, reminderIdempotencyKey } from '../reminder/reminder.repository';
 import { sendEmail } from '../notifications/resend.notification';
+import { recordReminderTransition } from '../../shared/observability/metrics';
+import { trace } from '@opentelemetry/api';
 
 let injectedNotificationFailure = false;
 
@@ -33,18 +35,22 @@ async function ensureSending(appointmentId: string, type: ReminderType): Promise
 
 export const reminderActivities: ReminderActivities = {
   async scheduleReminders(input: ScheduleRemindersInput): Promise<void> {
-    await Promise.all([
+    const scheduled = await Promise.all([
       reminderRepository.schedule(input.appointmentId, 'CONFIRMATION_REMINDER', input.confirmationReminderAt),
       reminderRepository.schedule(input.appointmentId, 'UPCOMING_REMINDER', input.upcomingReminderAt)
     ]);
+    if (scheduled[0]) recordReminderTransition('scheduled', 'CONFIRMATION_REMINDER');
+    if (scheduled[1]) recordReminderTransition('scheduled', 'UPCOMING_REMINDER');
   },
 
   async cancelReminder({ appointmentId, type }: ReminderActivityInput): Promise<{ cancelled: boolean }> {
     const cancelled = await reminderRepository.cancelIfPending(appointmentId, type);
+    if (cancelled) recordReminderTransition('cancelled', type);
     return { cancelled };
   },
 
   async sendReminder({ appointmentId, type }: ReminderActivityInput): Promise<{ sent: boolean }> {
+    trace.getActiveSpan()?.setAttributes({ 'operation': 'reminder.send', 'reminder.type': type });
     const reminder = await reminderRepository.get(appointmentId, type);
     if (!reminder) throw new Error(`Reminder ${type} for appointment ${appointmentId} does not exist.`);
     // Already sent (or otherwise terminal) — a retried/duplicated call must not send twice.
@@ -52,6 +58,7 @@ export const reminderActivities: ReminderActivities = {
 
     const appointment = await appointmentRepository.getForReminder(appointmentId);
     if (!appointment) throw new Error(`Appointment ${appointmentId} does not exist.`);
+    trace.getActiveSpan()?.setAttribute('appointment.state', appointment.status);
 
     if (!canSendReminder(type, appointment.status, appointment.appointmentTime.getTime(), Date.now())) {
       logger.info({ event: 'reminder_precondition_failed', appointmentId, type, appointmentStatus: appointment.status });
@@ -100,11 +107,11 @@ export const reminderActivities: ReminderActivities = {
         message
       });
       logger.info({ event: 'reminder_sent', appointmentId, type, provider: 'resend', providerMessageId });
-      await reminderRepository.markSent(appointmentId, type, providerMessageId);
+      if (await reminderRepository.markSent(appointmentId, type, providerMessageId)) recordReminderTransition('sent', type);
       return { sent: true };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      await reminderRepository.markFailed(appointmentId, type, message);
+      if (await reminderRepository.markFailed(appointmentId, type, message)) recordReminderTransition('failed', type);
       throw error;
     }
   }

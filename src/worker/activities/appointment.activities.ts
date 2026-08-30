@@ -12,6 +12,7 @@ import type {
 } from '../../shared/temporal/contracts';
 import { appointmentRepository } from '../appointment/appointment.repository';
 import { schedulingRepository } from '../scheduling/scheduling.repository';
+import { trace } from '@opentelemetry/api';
 
 export const appointmentActivities: AppointmentActivities = {
   async validateBooking(input: BookingActivityInput): Promise<BookingValidationResult> {
@@ -48,6 +49,7 @@ export const appointmentActivities: AppointmentActivities = {
   },
 
   async transitionAppointment(input: TransitionAppointmentInput): Promise<void> {
+    trace.getActiveSpan()?.setAttribute('appointment.state', input.to);
     if (input.to === 'BOOKED' && getEnv().DEMO_FAILURE_MODE === 'create-permanent') {
       throw ApplicationFailure.nonRetryable('Injected permanent creation failure.', 'CREATE_APPOINTMENT_REJECTED');
     }
