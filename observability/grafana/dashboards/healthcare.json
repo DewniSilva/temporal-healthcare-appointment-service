@@ -1,0 +1,15 @@
+{
+  "title": "Healthcare Appointments",
+  "uid": "healthcare-appointments",
+  "schemaVersion": 41,
+  "time": { "from": "now-6h", "to": "now" },
+  "panels": [
+    { "type": "timeseries", "title": "HTTP requests", "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 }, "targets": [{ "expr": "sum by (route, status_class) (rate(http_requests_total[5m]))" }] },
+    { "type": "timeseries", "title": "HTTP p95 latency", "gridPos": { "x": 12, "y": 0, "w": 12, "h": 8 }, "targets": [{ "expr": "histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket[5m])))" }] },
+    { "type": "timeseries", "title": "Bookings and failures", "gridPos": { "x": 0, "y": 8, "w": 8, "h": 8 }, "targets": [{ "expr": "rate(appointments_booked_total[5m])" }, { "expr": "rate(appointments_booking_failed_total[5m])" }] },
+    { "type": "timeseries", "title": "Reminder outcomes", "gridPos": { "x": 8, "y": 8, "w": 8, "h": 8 }, "targets": [{ "expr": "sum by (reminder_type) (rate(reminders_sent_total[5m]))" }, { "expr": "sum by (reminder_type) (rate(reminders_failed_total[5m]))" }] },
+    { "type": "timeseries", "title": "Reconciliation repairs", "gridPos": { "x": 16, "y": 8, "w": 8, "h": 8 }, "targets": [{ "expr": "sum by (repair_type) (increase(reconciliation_repairs_total[30m]))" }] },
+    { "type": "timeseries", "title": "Temporal failures and retries", "gridPos": { "x": 0, "y": 16, "w": 12, "h": 8 }, "targets": [{ "expr": "sum(rate(temporal_activity_execution_failed_total[5m]))" }, { "expr": "sum(rate(temporal_activity_task_started_total[5m])) - sum(rate(temporal_activity_execution_succeeded_total[5m]))" }] },
+    { "type": "timeseries", "title": "Rate limiter", "gridPos": { "x": 12, "y": 16, "w": 12, "h": 8 }, "targets": [{ "expr": "sum by (policy) (rate(rate_limit_blocked_total[5m]))" }, { "expr": "sum by (policy) (increase(rate_limit_redis_errors_total[10m]))" }] }
+  ]
+}

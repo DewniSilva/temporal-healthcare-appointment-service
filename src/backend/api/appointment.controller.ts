@@ -33,3 +33,15 @@ export async function cancel(req: Request, res: Response): Promise<void> {
   await signalAppointment(id, 'cancel', req.auth!, req.requestId);
   res.status(202).json({ appointmentId: id, status: 'CANCEL_SIGNAL_ACCEPTED' });
 }
+
+export async function complete(req: Request, res: Response): Promise<void> {
+  const { id } = appointmentParamsSchema.parse(req.params);
+  await signalAppointment(id, 'complete', req.auth!, req.requestId);
+  res.status(202).json({ appointmentId: id, status: 'COMPLETE_SIGNAL_ACCEPTED' });
+}
+
+export async function markNoShow(req: Request, res: Response): Promise<void> {
+  const { id } = appointmentParamsSchema.parse(req.params);
+  await signalAppointment(id, 'no-show', req.auth!, req.requestId);
+  res.status(202).json({ appointmentId: id, status: 'NO_SHOW_SIGNAL_ACCEPTED' });
+}

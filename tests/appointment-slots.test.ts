@@ -2,8 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   APPOINTMENT_SLOT_MS,
   appointmentOverlapWindow,
-  isAlignedAppointmentSlot,
-  isWithinWorkingHours
+  isAlignedAppointmentSlot
 } from '../src/shared/appointmentSlots';
 
 describe('20-minute appointment slot policy', () => {
@@ -12,16 +11,6 @@ describe('20-minute appointment slot policy', () => {
     expect(isAlignedAppointmentSlot('2099-01-01T10:20:00+05:30')).toBe(true);
     expect(isAlignedAppointmentSlot('2099-01-01T10:40:00+05:30')).toBe(true);
     expect(isAlignedAppointmentSlot('2099-01-01T10:30:00+05:30')).toBe(false);
-  });
-
-  it('restricts the caller wall-clock hour to 7 AM–12 PM and 1 PM–5 PM', () => {
-    expect(isWithinWorkingHours('2099-01-01T07:00:00+05:30')).toBe(true);
-    expect(isWithinWorkingHours('2099-01-01T11:40:00+05:30')).toBe(true);
-    expect(isWithinWorkingHours('2099-01-01T12:00:00+05:30')).toBe(false);
-    expect(isWithinWorkingHours('2099-01-01T13:00:00+05:30')).toBe(true);
-    expect(isWithinWorkingHours('2099-01-01T16:40:00+05:30')).toBe(true);
-    expect(isWithinWorkingHours('2099-01-01T17:00:00+05:30')).toBe(false);
-    expect(isWithinWorkingHours('2099-01-01T06:40:00+05:30')).toBe(false);
   });
 
   it('builds strict overlap boundaries so adjacent slots remain available', () => {

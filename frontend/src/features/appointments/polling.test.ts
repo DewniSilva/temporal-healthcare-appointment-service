@@ -17,15 +17,19 @@ describe('delayForAttempt', () => {
 });
 
 describe('isTerminalWorkflowStatus', () => {
-  it('treats CONFIRMED, CANCELLED, and FAILED as terminal', () => {
+  it('treats CONFIRMED and every other resting-or-terminal status as terminal for polling purposes', () => {
     expect(isTerminalWorkflowStatus('CONFIRMED')).toBe(true);
     expect(isTerminalWorkflowStatus('CANCELLED')).toBe(true);
-    expect(isTerminalWorkflowStatus('FAILED')).toBe(true);
+    expect(isTerminalWorkflowStatus('NO_RESPONSE')).toBe(true);
+    expect(isTerminalWorkflowStatus('COMPLETED')).toBe(true);
+    expect(isTerminalWorkflowStatus('NO_SHOW')).toBe(true);
+    expect(isTerminalWorkflowStatus('REJECTED')).toBe(true);
+    expect(isTerminalWorkflowStatus('BOOKING_FAILED')).toBe(true);
   });
 
-  it('treats BOOKING, SCHEDULED, and WAITING_FOR_CONFIRMATION as non-terminal', () => {
-    expect(isTerminalWorkflowStatus('BOOKING')).toBe(false);
-    expect(isTerminalWorkflowStatus('SCHEDULED')).toBe(false);
-    expect(isTerminalWorkflowStatus('WAITING_FOR_CONFIRMATION')).toBe(false);
+  it('treats REQUESTED, RESERVING, and BOOKED as non-terminal', () => {
+    expect(isTerminalWorkflowStatus('REQUESTED')).toBe(false);
+    expect(isTerminalWorkflowStatus('RESERVING')).toBe(false);
+    expect(isTerminalWorkflowStatus('BOOKED')).toBe(false);
   });
 });

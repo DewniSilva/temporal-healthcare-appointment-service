@@ -2,10 +2,20 @@ import { apiRequest } from '../../lib/apiClient';
 import type {
   Appointment,
   AppointmentWorkflowState,
+  AvailableSlotsResponse,
   CreateAppointmentRequest,
   SignalResponse,
   StartAppointmentResponse
 } from '../../types/api';
+
+export function getAvailableSlots(
+  doctorId: string,
+  date: string,
+  signal?: AbortSignal
+): Promise<AvailableSlotsResponse> {
+  const path = `/doctors/${encodeURIComponent(doctorId)}/available-slots?date=${encodeURIComponent(date)}`;
+  return apiRequest<AvailableSlotsResponse>(path, { signal });
+}
 
 export function createAppointment(
   input: CreateAppointmentRequest,
@@ -35,4 +45,12 @@ export function confirmAppointment(id: string): Promise<SignalResponse> {
 
 export function cancelAppointment(id: string): Promise<SignalResponse> {
   return apiRequest<SignalResponse>(`/appointments/${id}/cancel`, { method: 'POST' });
+}
+
+export function completeAppointment(id: string): Promise<SignalResponse> {
+  return apiRequest<SignalResponse>(`/appointments/${id}/complete`, { method: 'POST' });
+}
+
+export function markNoShow(id: string): Promise<SignalResponse> {
+  return apiRequest<SignalResponse>(`/appointments/${id}/no-show`, { method: 'POST' });
 }

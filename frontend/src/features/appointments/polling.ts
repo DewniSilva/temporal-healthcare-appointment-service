@@ -1,4 +1,4 @@
-import type { WorkflowStatus } from '../../types/api';
+import type { AppointmentStatus } from '../../types/api';
 
 export interface BackoffOptions {
   initialDelayMs: number;
@@ -23,12 +23,20 @@ export function delayForAttempt(
   return Math.min(Math.round(raw), options.maxDelayMs);
 }
 
-export const TERMINAL_WORKFLOW_STATUSES: WorkflowStatus[] = [
+// Every status except the three the appointment durably lives in while a
+// Signal's effect is still pending (REQUESTED, RESERVING, BOOKED) — polling
+// after a confirm/cancel/complete/no-show Signal stops as soon as the
+// Workflow reports having left BOOKED, whichever resting status it reaches.
+export const TERMINAL_WORKFLOW_STATUSES: AppointmentStatus[] = [
   'CONFIRMED',
+  'NO_RESPONSE',
   'CANCELLED',
-  'FAILED'
+  'COMPLETED',
+  'NO_SHOW',
+  'REJECTED',
+  'BOOKING_FAILED'
 ];
 
-export function isTerminalWorkflowStatus(status: WorkflowStatus): boolean {
+export function isTerminalWorkflowStatus(status: AppointmentStatus): boolean {
   return TERMINAL_WORKFLOW_STATUSES.includes(status);
 }

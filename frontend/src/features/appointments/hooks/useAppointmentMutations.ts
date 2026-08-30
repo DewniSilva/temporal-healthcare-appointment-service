@@ -1,5 +1,5 @@
 import { useMutation } from '@tanstack/react-query';
-import { cancelAppointment, confirmAppointment, createAppointment } from '../api';
+import { cancelAppointment, completeAppointment, confirmAppointment, createAppointment, markNoShow } from '../api';
 import type { CreateAppointmentRequest } from '../../../types/api';
 
 export function useCreateAppointmentMutation() {
@@ -15,4 +15,12 @@ export function useConfirmAppointmentMutation(appointmentId: string) {
 
 export function useCancelAppointmentMutation(appointmentId: string) {
   return useMutation({ mutationFn: () => cancelAppointment(appointmentId) });
+}
+
+export function useCompleteAppointmentMutation(appointmentId: string) {
+  return useMutation({ mutationFn: () => completeAppointment(appointmentId) });
+}
+
+export function useMarkNoShowMutation(appointmentId: string) {
+  return useMutation({ mutationFn: () => markNoShow(appointmentId) });
 }

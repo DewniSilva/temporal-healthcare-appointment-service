@@ -16,17 +16,27 @@ const bookedAppointment: Appointment = {
 };
 
 const confirmedWorkflow: AppointmentWorkflowState = {
-  status: 'CONFIRMED',
-  reminderSent: true,
-  confirmed: true,
-  cancelled: false,
-  reminderAt: '2026-09-01T08:00:00Z'
+  appointmentStatus: 'CONFIRMED',
+  reservationStatus: 'RESERVED',
+  confirmationReminderAt: '2026-08-31T10:00:00Z',
+  confirmationDeadlineAt: '2026-09-01T04:00:00Z',
+  upcomingReminderAt: '2026-09-01T08:00:00Z',
+  confirmationReminderSent: true,
+  upcomingReminderSent: false,
+  confirmedAt: '2026-08-31T12:00:00Z'
 };
 
-function renderActions(role: 'PATIENT' | 'DOCTOR' | 'ADMIN', patientId?: string) {
+const confirmedAppointment: Appointment = { ...bookedAppointment, status: 'CONFIRMED' };
+
+function renderActions(
+  role: 'PATIENT' | 'DOCTOR' | 'ADMIN',
+  patientId?: string,
+  appointment: Appointment = bookedAppointment,
+  doctorId?: string
+) {
   return render(
-    <TestProviders authValue={makeAuthContextValue({ user: makeAuthUser({ role, patientId }) })}>
-      <AppointmentActions appointment={bookedAppointment} />
+    <TestProviders authValue={makeAuthContextValue({ user: makeAuthUser({ role, patientId, doctorId }) })}>
+      <AppointmentActions appointment={appointment} />
     </TestProviders>
   );
 }
@@ -40,10 +50,23 @@ function cancelTriggerButton() {
 }
 
 describe('AppointmentActions', () => {
-  it('renders nothing for a doctor (read-only restriction)', () => {
-    renderActions('DOCTOR', undefined);
+  it('renders nothing for a doctor while the appointment is only BOOKED', () => {
+    renderActions('DOCTOR', undefined, bookedAppointment, 'doctor-001');
     expect(screen.queryByText(/confirm appointment/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/cancel appointment/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/mark completed/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/mark no-show/i)).not.toBeInTheDocument();
+  });
+
+  it('gives the assigned doctor complete/no-show actions once the appointment is CONFIRMED, but not an unrelated doctor', () => {
+    renderActions('DOCTOR', undefined, confirmedAppointment, 'doctor-001');
+    expect(screen.getByText(/mark completed/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Mark no-show' })).toBeInTheDocument();
+    expect(screen.queryByText(/confirm appointment/i)).not.toBeInTheDocument();
+    cleanup();
+
+    renderActions('DOCTOR', undefined, confirmedAppointment, 'doctor-999');
+    expect(screen.queryByText(/mark completed/i)).not.toBeInTheDocument();
   });
 
   it('renders nothing for a patient who does not own the appointment', () => {
@@ -94,11 +117,14 @@ describe('AppointmentActions', () => {
       status: 'CANCEL_SIGNAL_ACCEPTED'
     });
     vi.spyOn(api, 'getWorkflowState').mockResolvedValue({
-      status: 'CANCELLED',
-      reminderSent: true,
-      confirmed: false,
-      cancelled: true,
-      reminderAt: '2026-09-01T08:00:00Z'
+      appointmentStatus: 'CANCELLED',
+      reservationStatus: 'RELEASED',
+      confirmationReminderAt: '2026-08-31T10:00:00Z',
+      confirmationDeadlineAt: '2026-09-01T04:00:00Z',
+      upcomingReminderAt: '2026-09-01T08:00:00Z',
+      confirmationReminderSent: true,
+      upcomingReminderSent: false,
+      confirmedAt: null
     });
 
     renderActions('PATIENT', 'patient-001');

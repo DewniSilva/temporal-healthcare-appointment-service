@@ -34,6 +34,13 @@ export function localTimeZoneLabel(): string {
   return Intl.DateTimeFormat().resolvedOptions().timeZone;
 }
 
+/** Today's date in the viewer's own local timezone, as a `YYYY-MM-DD` value for a `<input type="date">`. */
+export function todayDateInputValue(): string {
+  const now = new Date();
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+}
+
 export function formatRelative(iso: string): string {
   const diffMs = new Date(iso).getTime() - Date.now();
   const diffMinutes = Math.round(diffMs / 60_000);

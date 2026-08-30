@@ -42,7 +42,7 @@ export function AppointmentDetailPage() {
 
   return (
     <div className="space-y-6">
-      {workflowQuery.data?.reminderSent && (
+      {(workflowQuery.data?.confirmationReminderSent || workflowQuery.data?.upcomingReminderSent) && (
         <Alert variant="success" title="Reminder sent">
           A reminder notification for this appointment has been delivered.
         </Alert>
@@ -71,7 +71,7 @@ export function AppointmentDetailPage() {
             <dt className="text-xs font-medium uppercase tracking-wide text-slate-400">Workflow status</dt>
             <dd className="mt-1">
               {workflowQuery.data ? (
-                <WorkflowStatusBadge status={workflowQuery.data.status} />
+                <WorkflowStatusBadge status={workflowQuery.data.appointmentStatus} />
               ) : workflowQuery.isError ? (
                 <span className="text-sm text-slate-500">{describeError(workflowQuery.error)}</span>
               ) : (
@@ -80,9 +80,11 @@ export function AppointmentDetailPage() {
             </dd>
           </div>
           <div>
-            <dt className="text-xs font-medium uppercase tracking-wide text-slate-400">Reminder</dt>
+            <dt className="text-xs font-medium uppercase tracking-wide text-slate-400">Reminders</dt>
             <dd className="mt-1 text-sm text-slate-800">
-              {workflowQuery.data ? (workflowQuery.data.reminderSent ? 'Sent' : 'Not sent yet') : '—'}
+              {workflowQuery.data
+                ? `Confirmation: ${workflowQuery.data.confirmationReminderSent ? 'Sent' : 'Not sent yet'} · Upcoming: ${workflowQuery.data.upcomingReminderSent ? 'Sent' : 'Not sent yet'}`
+                : '—'}
             </dd>
           </div>
           <div>

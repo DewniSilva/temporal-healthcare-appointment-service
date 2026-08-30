@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { CalendarClock } from 'lucide-react';
@@ -10,11 +10,11 @@ import { DoctorIdInput } from './components/DoctorIdInput';
 import { BookingProcessingScreen } from './components/BookingProcessingScreen';
 import { bookingFormSchema, type BookingFormValues } from './bookingSchema';
 import { useCreateAppointmentMutation } from './hooks/useAppointmentMutations';
+import { useAvailableSlotsQuery } from './hooks/useAvailableSlotsQuery';
 import { generateIdempotencyKey } from '../../lib/idempotency';
-import { toIsoWithOffset, localTimeZoneLabel } from '../../lib/dateTime';
+import { formatTime, localTimeZoneLabel, todayDateInputValue } from '../../lib/dateTime';
 import { describeError } from '../../lib/apiError';
 import { rememberAppointment } from './recentAppointments';
-import { appointmentTimeSlots } from './timeSlots';
 
 interface BookingResult {
   appointmentId: string;
@@ -36,6 +36,8 @@ export function BookingPage() {
     register,
     handleSubmit,
     reset,
+    watch,
+    setValue,
     formState: { errors, isSubmitting }
   } = useForm<BookingFormValues>({
     resolver: zodResolver(bookingFormSchema),
@@ -46,6 +48,17 @@ export function BookingPage() {
       time: ''
     }
   });
+
+  const doctorId = watch('doctorId');
+  const date = watch('date');
+  const slotsQuery = useAvailableSlotsQuery(doctorId, date);
+  const slots = slotsQuery.data?.slots ?? [];
+
+  // A previously-chosen slot belongs to the doctor/date it was fetched for;
+  // once either changes the old value can no longer be a valid option.
+  useEffect(() => {
+    setValue('time', '');
+  }, [doctorId, date, setValue]);
 
   const onSubmit = async (values: BookingFormValues) => {
     if (!idempotencyKeyRef.current) idempotencyKeyRef.current = generateIdempotencyKey();
@@ -58,7 +71,9 @@ export function BookingPage() {
         input: {
           patientId: values.patientId,
           doctorId: values.doctorId,
-          appointmentTime: toIsoWithOffset(values.date, values.time)
+          // Already the exact startAt ISO instant of a slot the backend
+          // itself returned — no client-side timezone reconstruction.
+          appointmentTime: values.time
         },
         idempotencyKey: idempotencyKeyRef.current
       });
@@ -93,6 +108,20 @@ export function BookingPage() {
       />
     );
   }
+
+  const canPickTime = doctorId.trim().length >= 3 && date.trim().length > 0;
+  const hasOpenSlot = slots.some((slot) => slot.status === 'AVAILABLE');
+  const timePlaceholder = !canPickTime
+    ? 'Choose a doctor and date first'
+    : slotsQuery.isLoading
+      ? 'Loading available times…'
+      : slotsQuery.isError
+        ? 'Could not load available times'
+        : slots.length === 0
+          ? "The doctor isn't scheduled on this date"
+          : !hasOpenSlot
+            ? 'Fully booked — every slot below is taken'
+            : 'Select a time slot';
 
   return (
     <Card>
@@ -143,6 +172,7 @@ export function BookingPage() {
             <input
               id="date"
               type="date"
+              min={todayDateInputValue()}
               aria-invalid={errors.date ? true : undefined}
               aria-describedby={errors.date ? 'date-error' : undefined}
               className="mt-1.5 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm shadow-sm focus-visible:border-primary-500"
@@ -157,22 +187,28 @@ export function BookingPage() {
 
           <div>
             <label htmlFor="time" className="block text-sm font-medium text-slate-700">
-              20-minute appointment slot
+              Time slot
             </label>
             <select
               id="time"
+              disabled={!canPickTime || slotsQuery.isLoading || slots.length === 0}
               aria-invalid={errors.time ? true : undefined}
               aria-describedby="time-hint time-error"
-              className="mt-1.5 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus-visible:border-primary-500"
+              className="mt-1.5 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus-visible:border-primary-500 disabled:bg-slate-50 disabled:text-slate-400"
               {...register('time')}
             >
-              <option value="">Select a time slot</option>
-              {appointmentTimeSlots.map((slot) => (
-                <option key={slot.value} value={slot.value}>
-                  {slot.label}
+              <option value="">{timePlaceholder}</option>
+              {slots.map((slot) => (
+                <option key={slot.startAt} value={slot.startAt} disabled={slot.status !== 'AVAILABLE'}>
+                  {formatTime(slot.startAt)} – {formatTime(slot.endAt)}
+                  {slot.status === 'RESERVED' && ' · Already booked'}
+                  {slot.status === 'PAST' && ' · Time has passed'}
                 </option>
               ))}
             </select>
+            {slotsQuery.isError && (
+              <p className="mt-1.5 text-sm text-red-600">{describeError(slotsQuery.error)}</p>
+            )}
             {errors.time && (
               <p id="time-error" role="alert" className="mt-1.5 text-sm text-red-600">
                 {errors.time.message}
@@ -183,7 +219,7 @@ export function BookingPage() {
 
         <p id="time-hint" className="flex items-center gap-1.5 text-xs text-slate-400">
           <CalendarClock className="h-3.5 w-3.5" aria-hidden="true" />
-          Each slot occupies 20 minutes, between 7:00 AM–12:00 PM or 1:00 PM–5:00 PM. Times use your local timezone ({localTimeZoneLabel()}).
+          Slot length and hours come from the doctor's own schedule. Times are shown in your local timezone ({localTimeZoneLabel()}).
         </p>
 
         <Button type="submit" isLoading={isSubmitting || mutation.isPending}>

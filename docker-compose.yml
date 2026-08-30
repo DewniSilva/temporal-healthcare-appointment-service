@@ -54,19 +54,22 @@ services:
       TEMPORAL_ADDRESS: temporal:7233
       TEMPORAL_CORS_ORIGINS: http://localhost:3000
     ports:
-      - "8080:8080"
+      - "${TEMPORAL_UI_PORT:-8080}:8080"
     restart: unless-stopped
 
   backend:
     build: .
+    image: temporal-healthcare-app:${IMAGE_TAG:-local}
     depends_on:
-      postgres:
-        condition: service_healthy
+      seed:
+        condition: service_completed_successfully
       temporal:
         condition: service_healthy
       redis:
         condition: service_healthy
     environment: &app-environment
+      # Local-only stack. Real deployments keep the image default: production.
+      NODE_ENV: development
       DATABASE_URL: postgresql://healthcare_app:local_app_password@postgres:5432/healthcare?schema=public
       TEMPORAL_ADDRESS: temporal:7233
       TEMPORAL_NAMESPACE: default
@@ -75,22 +78,54 @@ services:
       # TEMPORAL_API_KEY (e.g. for Temporal Cloud) for a real deployment.
       TEMPORAL_TLS: ${TEMPORAL_TLS:-false}
       TEMPORAL_API_KEY: ${TEMPORAL_API_KEY:-}
+      TEMPORAL_TLS_CLIENT_CERT_PATH: ${TEMPORAL_TLS_CLIENT_CERT_PATH:-}
+      TEMPORAL_TLS_CLIENT_KEY_PATH: ${TEMPORAL_TLS_CLIENT_KEY_PATH:-}
+      TEMPORAL_TLS_CA_PATH: ${TEMPORAL_TLS_CA_PATH:-}
+      TEMPORAL_TLS_SERVER_NAME: ${TEMPORAL_TLS_SERVER_NAME:-}
       JWT_SECRET: ${JWT_SECRET:-local-demo-secret-change-before-production-123456}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-1h}
+      JWT_ISSUER: ${JWT_ISSUER:-temporal-healthcare-appointments}
+      JWT_AUDIENCE: ${JWT_AUDIENCE:-temporal-healthcare-users}
       PORT: 3000
       CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3000}
-      REMINDER_LEAD_TIME_SECONDS: ${REMINDER_LEAD_TIME_SECONDS:-7200}
+      CLINIC_TIMEZONE: ${CLINIC_TIMEZONE:-Asia/Colombo}
+      CONFIRMATION_REMINDER_HOURS_BEFORE: ${CONFIRMATION_REMINDER_HOURS_BEFORE:-24}
+      CONFIRMATION_DEADLINE_HOURS_BEFORE: ${CONFIRMATION_DEADLINE_HOURS_BEFORE:-6}
+      UPCOMING_REMINDER_HOURS_BEFORE: ${UPCOMING_REMINDER_HOURS_BEFORE:-2}
+      NO_RESPONSE_POLICY: ${NO_RESPONSE_POLICY:-RELEASE_SLOT}
+      REMINDER_MAX_ATTEMPTS: ${REMINDER_MAX_ATTEMPTS:-5}
       RESEND_API_KEY: ${RESEND_API_KEY:-}
       RESEND_FROM_EMAIL: ${RESEND_FROM_EMAIL:-Healthcare Appointments <onboarding@resend.dev>}
       REMINDER_EMAIL_TO: ${REMINDER_EMAIL_TO:-}
       LOG_LEVEL: ${LOG_LEVEL:-info}
+      METRICS_ENABLED: ${METRICS_ENABLED:-true}
+      METRICS_HOST: 0.0.0.0
+      METRICS_PORT: 9464
+      TEMPORAL_METRICS_PORT: 9465
+      OTEL_ENABLED: ${OTEL_ENABLED:-false}
+      OTEL_SERVICE_NAME: temporal-appointment-api
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
       DEMO_FAILURE_MODE: ${DEMO_FAILURE_MODE:-none}
       REDIS_URL: redis://redis:6379
+      TRUST_PROXY_HOPS: ${TRUST_PROXY_HOPS:-0}
+      RATE_LIMIT_LOGIN_IP_MAX: ${RATE_LIMIT_LOGIN_IP_MAX:-5}
+      RATE_LIMIT_LOGIN_IP_WINDOW_SECONDS: ${RATE_LIMIT_LOGIN_IP_WINDOW_SECONDS:-60}
+      RATE_LIMIT_LOGIN_ACCOUNT_MAX: ${RATE_LIMIT_LOGIN_ACCOUNT_MAX:-10}
+      RATE_LIMIT_LOGIN_ACCOUNT_WINDOW_SECONDS: ${RATE_LIMIT_LOGIN_ACCOUNT_WINDOW_SECONDS:-900}
+      RATE_LIMIT_BOOKING_MAX: ${RATE_LIMIT_BOOKING_MAX:-10}
+      RATE_LIMIT_BOOKING_WINDOW_SECONDS: ${RATE_LIMIT_BOOKING_WINDOW_SECONDS:-60}
+      RATE_LIMIT_CONFIRM_MAX: ${RATE_LIMIT_CONFIRM_MAX:-20}
+      RATE_LIMIT_CONFIRM_WINDOW_SECONDS: ${RATE_LIMIT_CONFIRM_WINDOW_SECONDS:-60}
+      RATE_LIMIT_CANCEL_MAX: ${RATE_LIMIT_CANCEL_MAX:-20}
+      RATE_LIMIT_CANCEL_WINDOW_SECONDS: ${RATE_LIMIT_CANCEL_WINDOW_SECONDS:-60}
+      RATE_LIMIT_MANAGEMENT_MAX: ${RATE_LIMIT_MANAGEMENT_MAX:-30}
+      RATE_LIMIT_MANAGEMENT_WINDOW_SECONDS: ${RATE_LIMIT_MANAGEMENT_WINDOW_SECONDS:-60}
       RECONCILIATION_INTERVAL_MINUTES: ${RECONCILIATION_INTERVAL_MINUTES:-15}
       ORPHANED_RESERVATION_GRACE_MINUTES: ${ORPHANED_RESERVATION_GRACE_MINUTES:-60}
-    command: ["sh", "-c", "npx prisma migrate deploy && npx prisma db seed && node dist/src/backend/server.js"]
+      RECONCILIATION_BATCH_SIZE: ${RECONCILIATION_BATCH_SIZE:-100}
+    command: ["npm", "start"]
     ports:
-      - "3000:3000"
+      - "${BACKEND_PORT:-3000}:3000"
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://localhost:3000/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
       interval: 5s
@@ -98,19 +133,40 @@ services:
       retries: 30
     restart: unless-stopped
 
+  migrate:
+    image: temporal-healthcare-app:${IMAGE_TAG:-local}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment: *app-environment
+    command: ["npm", "run", "prisma:migrate"]
+    restart: "no"
+
+  seed:
+    image: temporal-healthcare-app:${IMAGE_TAG:-local}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    environment: *app-environment
+    command: ["npm", "run", "prisma:seed"]
+    restart: "no"
+
   worker:
-    build: .
+    image: temporal-healthcare-app:${IMAGE_TAG:-local}
     depends_on:
       backend:
         condition: service_healthy
       temporal:
         condition: service_healthy
-    environment: *app-environment
-    command: ["node", "dist/src/worker/worker.js"]
+    environment:
+      <<: *app-environment
+      OTEL_SERVICE_NAME: temporal-appointment-worker
+    command: ["npm", "run", "worker"]
     restart: unless-stopped
 
   frontend:
     build: ./frontend
+    image: temporal-healthcare-frontend:${IMAGE_TAG:-local}
     depends_on:
       backend:
         condition: service_healthy
@@ -118,7 +174,7 @@ services:
       # Host port 5173 sits inside a Windows/Hyper-V dynamic port exclusion
       # range on some machines, which blocks Docker from binding it. 8081 is
       # outside all default exclusion ranges; adjust if it's already in use.
-      - "8081:80"
+      - "${FRONTEND_PORT:-8081}:80"
     restart: unless-stopped
 
 volumes:

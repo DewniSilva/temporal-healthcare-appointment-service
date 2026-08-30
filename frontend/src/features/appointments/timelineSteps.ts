@@ -8,25 +8,29 @@ export interface TimelineStep {
   state: StepState;
 }
 
-const SCHEDULED_OR_LATER = new Set([
-  'SCHEDULED',
-  'WAITING_FOR_CONFIRMATION',
-  'CONFIRMED',
-  'CANCELLED'
-]);
+const BOOKING_FAILURE_STATUSES = new Set<AppointmentStatus>(['REJECTED', 'BOOKING_FAILED']);
+const PAST_BOOKED_STATUSES = new Set<AppointmentStatus>(['BOOKED', 'CONFIRMED', 'NO_RESPONSE', 'CANCELLED', 'COMPLETED', 'NO_SHOW']);
+const OUTCOME_LABELS: Partial<Record<AppointmentStatus, string>> = {
+  COMPLETED: 'Completed',
+  NO_SHOW: 'No-show',
+  CANCELLED: 'Cancelled',
+  NO_RESPONSE: 'No response — slot released',
+  REJECTED: 'Booking rejected',
+  BOOKING_FAILED: 'Booking failed'
+};
 
 /**
- * The Workflow state is the primary source for this timeline, but it can be
- * briefly unavailable (503 right after booking, or a query error). When that
- * happens, fall back to the DB status, which is related but not atomically
- * updated with the Workflow (see SYSTEM_REPORT.md section 7.4).
+ * The Workflow query is the primary source for this timeline (it reports the
+ * exact same AppointmentStatus enum as the DB record), but it can be briefly
+ * unavailable (503 right after booking, or a query error). When that
+ * happens, fall back to the DB status.
  */
 export function buildTimelineSteps(
   dbStatus: AppointmentStatus,
   workflow: AppointmentWorkflowState | null
 ): TimelineStep[] {
-  const status = workflow?.status ?? null;
-  const slotLikelyReserved = status ? status !== 'BOOKING' : dbStatus !== 'PENDING';
+  const status = workflow?.appointmentStatus ?? dbStatus;
+  const confirmed = Boolean(workflow?.confirmedAt) || status === 'CONFIRMED' || status === 'COMPLETED' || status === 'NO_SHOW';
 
   const bookingAccepted: TimelineStep = {
     key: 'booking-accepted',
@@ -37,45 +41,36 @@ export function buildTimelineSteps(
   const slotReserved: TimelineStep = {
     key: 'slot-reserved',
     label: 'Slot reserved',
-    state: slotLikelyReserved ? 'complete' : status === 'BOOKING' ? 'current' : 'upcoming'
+    state: BOOKING_FAILURE_STATUSES.has(status) ? 'error' : PAST_BOOKED_STATUSES.has(status) ? 'complete' : 'current'
   };
 
-  const reminderState: StepState = status
-    ? SCHEDULED_OR_LATER.has(status)
-      ? workflow?.reminderSent
+  const confirmationState: StepState = BOOKING_FAILURE_STATUSES.has(status)
+    ? 'upcoming'
+    : status === 'NO_RESPONSE'
+      ? 'error'
+      : confirmed
         ? 'complete'
-        : status === 'SCHEDULED'
+        : status === 'BOOKED'
           ? 'current'
-          : 'complete'
-      : 'upcoming'
-    : dbStatus === 'CONFIRMED' || dbStatus === 'CANCELLED'
-      ? 'complete'
-      : 'upcoming';
+          : 'upcoming';
 
-  const reminder: TimelineStep = {
-    key: 'reminder',
-    label: workflow?.reminderSent ? 'Reminder sent' : 'Reminder scheduled',
-    state: reminderState
+  const confirmation: TimelineStep = {
+    key: 'confirmation',
+    label: status === 'NO_RESPONSE' ? 'No response by the deadline' : 'Confirmed',
+    state: confirmationState
   };
 
-  const effectiveDecision = status ?? (dbStatus === 'CONFIRMED' || dbStatus === 'CANCELLED' ? dbStatus : null);
-
-  let decisionLabel = 'Confirmed or cancelled';
-  let decisionState: StepState = 'upcoming';
-  if (effectiveDecision === 'CONFIRMED') {
-    decisionLabel = 'Confirmed';
-    decisionState = 'complete';
-  } else if (effectiveDecision === 'CANCELLED') {
-    decisionLabel = 'Cancelled';
-    decisionState = 'complete';
-  } else if (status === 'FAILED') {
-    decisionLabel = 'Booking failed';
-    decisionState = 'error';
-  } else if (status === 'WAITING_FOR_CONFIRMATION') {
-    decisionState = 'current';
+  let outcomeLabel = 'Appointment outcome';
+  let outcomeState: StepState = 'upcoming';
+  const explicitOutcome = OUTCOME_LABELS[status];
+  if (explicitOutcome) {
+    outcomeLabel = explicitOutcome;
+    outcomeState = status === 'COMPLETED' ? 'complete' : 'error';
+  } else if (status === 'CONFIRMED') {
+    outcomeState = 'current';
   }
 
-  const decision: TimelineStep = { key: 'decision', label: decisionLabel, state: decisionState };
+  const outcome: TimelineStep = { key: 'outcome', label: outcomeLabel, state: outcomeState };
 
-  return [bookingAccepted, slotReserved, reminder, decision];
+  return [bookingAccepted, slotReserved, confirmation, outcome];
 }

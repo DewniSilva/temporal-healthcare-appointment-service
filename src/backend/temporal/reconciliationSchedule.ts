@@ -11,7 +11,7 @@ import { reconciliationScheduleId, reconciliationWorkflowId, type Reconciliation
  */
 export async function ensureReconciliationSchedule(): Promise<void> {
   const env = getEnv();
-  const input: ReconciliationInput = { graceMinutes: env.ORPHANED_RESERVATION_GRACE_MINUTES };
+  const input: ReconciliationInput = { graceMinutes: env.ORPHANED_RESERVATION_GRACE_MINUTES, batchSize: env.RECONCILIATION_BATCH_SIZE };
   try {
     await temporalClient().schedule.create({
       scheduleId: reconciliationScheduleId,

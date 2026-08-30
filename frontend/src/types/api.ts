@@ -8,7 +8,19 @@ export interface LoginResponse {
   expiresIn: string;
 }
 
-export type AppointmentStatus = 'PENDING' | 'BOOKED' | 'CONFIRMED' | 'CANCELLED' | 'COMPLETED';
+export type AppointmentStatus =
+  | 'REQUESTED'
+  | 'RESERVING'
+  | 'BOOKED'
+  | 'CONFIRMED'
+  | 'NO_RESPONSE'
+  | 'CANCELLED'
+  | 'COMPLETED'
+  | 'NO_SHOW'
+  | 'REJECTED'
+  | 'BOOKING_FAILED';
+
+export type ReservationStatus = 'RESERVING' | 'RESERVED' | 'RELEASED' | 'CONFLICTED';
 
 export interface Appointment {
   id: string;
@@ -20,20 +32,15 @@ export interface Appointment {
   updatedAt: string;
 }
 
-export type WorkflowStatus =
-  | 'BOOKING'
-  | 'SCHEDULED'
-  | 'WAITING_FOR_CONFIRMATION'
-  | 'CONFIRMED'
-  | 'CANCELLED'
-  | 'FAILED';
-
 export interface AppointmentWorkflowState {
-  status: WorkflowStatus;
-  reminderSent: boolean;
-  confirmed: boolean;
-  cancelled: boolean;
-  reminderAt: string;
+  appointmentStatus: AppointmentStatus;
+  reservationStatus: ReservationStatus | null;
+  confirmationReminderAt: string;
+  confirmationDeadlineAt: string;
+  upcomingReminderAt: string;
+  confirmationReminderSent: boolean;
+  upcomingReminderSent: boolean;
+  confirmedAt: string | null;
 }
 
 export interface StartAppointmentResponse {
@@ -44,7 +51,7 @@ export interface StartAppointmentResponse {
 
 export interface SignalResponse {
   appointmentId: string;
-  status: 'CONFIRM_SIGNAL_ACCEPTED' | 'CANCEL_SIGNAL_ACCEPTED';
+  status: 'CONFIRM_SIGNAL_ACCEPTED' | 'CANCEL_SIGNAL_ACCEPTED' | 'COMPLETE_SIGNAL_ACCEPTED' | 'NO_SHOW_SIGNAL_ACCEPTED';
 }
 
 export interface HealthResponse {
@@ -58,6 +65,20 @@ export interface CreateAppointmentRequest {
   patientId: string;
   doctorId: string;
   appointmentTime: string;
+}
+
+export type SlotStatus = 'AVAILABLE' | 'RESERVED' | 'PAST';
+
+export interface AvailableSlot {
+  startAt: string;
+  endAt: string;
+  status: SlotStatus;
+}
+
+export interface AvailableSlotsResponse {
+  doctorId: string;
+  date: string;
+  slots: AvailableSlot[];
 }
 
 export interface ApiErrorBody {
