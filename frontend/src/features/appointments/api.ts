@@ -2,10 +2,20 @@ import { apiRequest } from '../../lib/apiClient';
 import type {
   Appointment,
   AppointmentWorkflowState,
+  AvailableSlotsResponse,
   CreateAppointmentRequest,
   SignalResponse,
   StartAppointmentResponse
 } from '../../types/api';
+
+export function getAvailableSlots(
+  doctorId: string,
+  date: string,
+  signal?: AbortSignal
+): Promise<AvailableSlotsResponse> {
+  const path = `/doctors/${encodeURIComponent(doctorId)}/available-slots?date=${encodeURIComponent(date)}`;
+  return apiRequest<AvailableSlotsResponse>(path, { signal });
+}
 
 export function createAppointment(
   input: CreateAppointmentRequest,

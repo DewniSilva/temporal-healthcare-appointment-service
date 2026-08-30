@@ -1,6 +1,8 @@
 import { ApplicationFailure } from '@temporalio/activity';
 import { getEnv } from '../../shared/config/env';
-import { isAlignedAppointmentSlot, isWithinWorkingHours } from '../../shared/appointmentSlots';
+import { APPOINTMENT_SLOT_MINUTES, isAlignedAppointmentSlot } from '../../shared/appointmentSlots';
+import { isSlotAvailable } from '../../shared/scheduling/availability';
+import { utcInstantToZonedDate } from '../../shared/scheduling/timezone';
 import type {
   AppointmentActivities,
   BookingActivityInput,
@@ -9,6 +11,7 @@ import type {
   TransitionAppointmentInput
 } from '../../shared/temporal/contracts';
 import { appointmentRepository } from '../appointment/appointment.repository';
+import { schedulingRepository } from '../scheduling/scheduling.repository';
 
 export const appointmentActivities: AppointmentActivities = {
   async validateBooking(input: BookingActivityInput): Promise<BookingValidationResult> {
@@ -18,15 +21,25 @@ export const appointmentActivities: AppointmentActivities = {
     if (!isAlignedAppointmentSlot(input.appointmentTime)) {
       return { valid: false, reason: 'Appointment must start on a 20-minute boundary.' };
     }
-    if (!isWithinWorkingHours(input.appointmentTime)) {
-      return { valid: false, reason: 'Appointment must be within working hours (7 AM–12 PM or 1 PM–5 PM).' };
-    }
     const [patientExists, doctorExists] = await Promise.all([
       appointmentRepository.patientExists(input.patientId),
       appointmentRepository.doctorExists(input.doctorId)
     ]);
     if (!patientExists) return { valid: false, reason: 'Patient does not exist.' };
     if (!doctorExists) return { valid: false, reason: 'Doctor does not exist.' };
+
+    // Authoritative per-doctor schedule check — never trusts that the
+    // frontend previously saw this time as available (spec §6).
+    const timeZone = getEnv().CLINIC_TIMEZONE;
+    const date = utcInstantToZonedDate(input.appointmentTime, timeZone);
+    const context = await schedulingRepository.getAvailabilityContext(input.doctorId, date, timeZone);
+    if (context.clinicClosed) return { valid: false, reason: 'The clinic is closed on the requested date.' };
+    if (context.exception?.type === 'UNAVAILABLE' && !context.exception.startTime) {
+      return { valid: false, reason: 'The doctor is unavailable on the requested date.' };
+    }
+    if (!isSlotAvailable(input.appointmentTime, { ...context, durationMinutes: APPOINTMENT_SLOT_MINUTES })) {
+      return { valid: false, reason: "Requested time is outside the doctor's available hours." };
+    }
     return { valid: true };
   },
 

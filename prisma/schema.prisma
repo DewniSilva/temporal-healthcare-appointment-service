@@ -56,6 +56,11 @@ enum ActorRole {
   SYSTEM
 }
 
+enum DoctorScheduleExceptionType {
+  UNAVAILABLE
+  CUSTOM_HOURS
+}
+
 model User {
   id           String   @id
   email        String   @unique
@@ -75,12 +80,14 @@ model Patient {
 }
 
 model Doctor {
-  id           String            @id
-  displayName  String
-  userId       String            @unique
-  user         User              @relation(fields: [userId], references: [id])
-  appointments Appointment[]
-  reservations SlotReservation[]
+  id                 String                    @id
+  displayName        String
+  userId             String                    @unique
+  user               User                      @relation(fields: [userId], references: [id])
+  appointments       Appointment[]
+  reservations       SlotReservation[]
+  availability       DoctorAvailability[]
+  scheduleExceptions DoctorScheduleException[]
 }
 
 model Appointment {
@@ -162,4 +169,56 @@ model AuditLog {
   appointment   Appointment @relation(fields: [appointmentId], references: [id])
 
   @@index([appointmentId])
+}
+
+// A doctor's recurring weekly schedule, in clinic-local wall-clock time
+// (see CLINIC_TIMEZONE) — not UTC, since "Monday 8am" must stay 8am
+// regardless of what UTC offset that translates to on a given date.
+// Multiple rows per (doctorId, dayOfWeek) represent multiple windows in one
+// day (e.g. a lunch break split); no separate "break" concept is needed.
+model DoctorAvailability {
+  id        String   @id @default(cuid())
+  doctorId  String
+  dayOfWeek Int // 0 = Sunday .. 6 = Saturday, clinic-local
+  startTime String // "HH:mm", clinic-local wall clock
+  endTime   String // "HH:mm", clinic-local wall clock
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  doctor    Doctor   @relation(fields: [doctorId], references: [id])
+
+  @@index([doctorId, dayOfWeek])
+}
+
+// A one-off override for a single clinic-local calendar date: either the
+// doctor is UNAVAILABLE (the whole day, or just [startTime,endTime) if those
+// are set — e.g. a half-day emergency leave), or CUSTOM_HOURS replaces that
+// date's recurring windows entirely (startTime/endTime required).
+model DoctorScheduleException {
+  id        String                      @id @default(cuid())
+  doctorId  String
+  date      DateTime                    @db.Date // clinic-local calendar date, no time component
+  type      DoctorScheduleExceptionType
+  startTime String? // "HH:mm", required for CUSTOM_HOURS; optional partial-day bound for UNAVAILABLE
+  endTime   String?
+  reason    String?
+  createdAt DateTime                    @default(now())
+  updatedAt DateTime                    @updatedAt
+  doctor    Doctor                      @relation(fields: [doctorId], references: [id])
+
+  // At most one exception per doctor per date keeps precedence unambiguous.
+  @@unique([doctorId, date])
+}
+
+// Clinic-wide closures (public holidays, planned shutdowns). Deliberately
+// clinic-wide rather than per-clinic — see DoctorScheduleException for the
+// per-doctor equivalent. A clinicId can be added here later without
+// reshaping this table if multi-clinic support is ever needed.
+model ClinicClosure {
+  id        String   @id @default(cuid())
+  date      DateTime @unique @db.Date
+  name      String
+  isClosed  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }

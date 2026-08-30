@@ -1,10 +1,11 @@
 import express, { type Request, type Response } from 'express';
 import helmet from 'helmet';
 import cors from 'cors';
-import { createRateLimiter } from './api/middleware/rateLimit.middleware';
+import { createLoginRateLimiters } from './api/middleware/rateLimit.middleware';
 import { requestId } from './api/middleware/requestId.middleware';
 import { errorHandler, notFound } from './api/middleware/error.middleware';
 import { createAppointmentRouter } from './api/appointment.routes';
+import { createClinicClosureRouter, createDoctorScheduleRouter } from './api/doctorSchedule.routes';
 import { getEnv } from '../shared/config/env';
 import { loginSchema } from './api/appointment.schema';
 import { login } from './auth/auth.service';
@@ -14,10 +15,12 @@ import { temporalClient } from './temporal/client';
 import { redisClient } from './redis/client';
 
 export function createApp() {
+  const env = getEnv();
   const app = express();
   app.disable('x-powered-by');
+  if (env.TRUST_PROXY_HOPS > 0) app.set('trust proxy', env.TRUST_PROXY_HOPS);
   app.use(helmet());
-  app.use(cors({ origin: getEnv().CORS_ORIGIN, methods: ['GET', 'POST'], allowedHeaders: ['authorization', 'content-type', 'idempotency-key', 'x-request-id'] }));
+  app.use(cors({ origin: env.CORS_ORIGIN, methods: ['GET', 'POST'], allowedHeaders: ['authorization', 'content-type', 'idempotency-key', 'x-request-id'] }));
   app.use(express.json({ limit: '32kb', strict: true }));
   app.use(requestId);
   app.use((req, res, next) => {
@@ -28,8 +31,8 @@ export function createApp() {
     next();
   });
 
-  const authLimiter = createRateLimiter({ windowMs: 15 * 60_000, limit: 20 });
-  app.post('/auth/login', authLimiter, async (req, res) => {
+  const loginLimiters = createLoginRateLimiters();
+  app.post('/auth/login', ...loginLimiters, async (req, res) => {
     const body = loginSchema.parse(req.body);
     res.json(await login(body.email, body.password));
   });
@@ -59,6 +62,8 @@ export function createApp() {
   app.get('/readiness', readiness);
   app.get('/health', readiness);
   app.use('/appointments', createAppointmentRouter());
+  app.use('/doctors', createDoctorScheduleRouter());
+  app.use('/clinic-closures', createClinicClosureRouter());
   app.use(notFound);
   app.use(errorHandler);
   return app;

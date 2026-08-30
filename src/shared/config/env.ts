@@ -34,6 +34,10 @@ const envSchema = z.object({
   JWT_EXPIRES_IN: z.string().default('1h'),
   PORT: z.coerce.number().int().min(1).max(65535).default(3000),
   CORS_ORIGIN: z.string().url().default('http://localhost:3000'),
+  // IANA zone the clinic's recurring doctor schedules are defined in (wall
+  // clock, e.g. "Monday 8am"). Single clinic-wide zone for now — see
+  // ClinicClosure's comment on adding a clinicId later if that ever changes.
+  CLINIC_TIMEZONE: z.string().min(1).default('Asia/Colombo'),
   // The three-tier confirmation/reminder policy (spec: 24h reminder, 6h
   // deadline, 2h upcoming reminder). Kept as separate hour offsets rather
   // than a single lead time, since each fires a different lifecycle event.
@@ -53,6 +57,21 @@ const envSchema = z.object({
   // Backs express-rate-limit so limits are shared and correct across replicas
   // instead of being tracked per-process.
   REDIS_URL: z.string().min(1).default('redis://redis:6379'),
+  // Number of reverse proxies between the public client and Express. Zero is
+  // the safe default: X-Forwarded-For is ignored unless the deployment opts in.
+  TRUST_PROXY_HOPS: z.coerce.number().int().min(0).max(10).default(0),
+  RATE_LIMIT_LOGIN_IP_MAX: z.coerce.number().int().min(1).default(5),
+  RATE_LIMIT_LOGIN_IP_WINDOW_SECONDS: z.coerce.number().int().min(1).default(60),
+  RATE_LIMIT_LOGIN_ACCOUNT_MAX: z.coerce.number().int().min(1).default(10),
+  RATE_LIMIT_LOGIN_ACCOUNT_WINDOW_SECONDS: z.coerce.number().int().min(1).default(900),
+  RATE_LIMIT_BOOKING_MAX: z.coerce.number().int().min(1).default(10),
+  RATE_LIMIT_BOOKING_WINDOW_SECONDS: z.coerce.number().int().min(1).default(60),
+  RATE_LIMIT_CONFIRM_MAX: z.coerce.number().int().min(1).default(20),
+  RATE_LIMIT_CONFIRM_WINDOW_SECONDS: z.coerce.number().int().min(1).default(60),
+  RATE_LIMIT_CANCEL_MAX: z.coerce.number().int().min(1).default(20),
+  RATE_LIMIT_CANCEL_WINDOW_SECONDS: z.coerce.number().int().min(1).default(60),
+  RATE_LIMIT_MANAGEMENT_MAX: z.coerce.number().int().min(1).default(30),
+  RATE_LIMIT_MANAGEMENT_WINDOW_SECONDS: z.coerce.number().int().min(1).default(60),
   // How often the reconciliation Workflow scans for orphaned/stuck state.
   RECONCILIATION_INTERVAL_MINUTES: z.coerce.number().int().min(1).default(15),
   // How long past an appointment's own end time a still-present slot

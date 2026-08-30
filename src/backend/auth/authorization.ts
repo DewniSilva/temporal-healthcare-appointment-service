@@ -35,3 +35,10 @@ export function assertCanManage(user: AuthenticatedUser, appointment: Appointmen
   if (user.role === 'DOCTOR' && user.doctorId === appointment.doctorId) return;
   throw new AppError(403, 'FORBIDDEN', 'You cannot manage this appointment.');
 }
+
+/** For managing a doctor's own recurring availability/schedule exceptions. */
+export function assertCanManageDoctorSchedule(user: AuthenticatedUser, doctorId: string): void {
+  if (user.role === 'ADMIN') return;
+  if (user.role === 'DOCTOR' && user.doctorId === doctorId) return;
+  throw new AppError(403, 'FORBIDDEN', 'You cannot manage this doctor\'s schedule.');
+}

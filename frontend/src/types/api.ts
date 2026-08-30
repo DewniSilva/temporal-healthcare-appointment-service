@@ -67,6 +67,20 @@ export interface CreateAppointmentRequest {
   appointmentTime: string;
 }
 
+export type SlotStatus = 'AVAILABLE' | 'RESERVED' | 'PAST';
+
+export interface AvailableSlot {
+  startAt: string;
+  endAt: string;
+  status: SlotStatus;
+}
+
+export interface AvailableSlotsResponse {
+  doctorId: string;
+  date: string;
+  slots: AvailableSlot[];
+}
+
 export interface ApiErrorBody {
   error: {
     code: string;
