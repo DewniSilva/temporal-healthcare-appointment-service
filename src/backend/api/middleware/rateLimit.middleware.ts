@@ -52,14 +52,14 @@ export function rateLimitPolicies(): RateLimitPolicies {
 }
 
 export function clientIpKey(req: Request): string {
-  return `ip:${ipKeyGenerator(req.ip)}`;
+  return `ip:${ipKeyGenerator(req.ip ?? req.socket.remoteAddress ?? 'unknown')}`;
 }
 
 export function loginAccountKey(req: Request): string {
   const email = typeof req.body?.email === 'string' ? req.body.email.trim().toLowerCase() : '';
   // Hash normalized emails so account identifiers are not visible in Redis
   // keys or operational tooling.
-  if (!email) return `invalid-account:${ipKeyGenerator(req.ip)}`;
+  if (!email) return `invalid-account:${ipKeyGenerator(req.ip ?? req.socket.remoteAddress ?? 'unknown')}`;
   return `account:${createHash('sha256').update(email).digest('hex')}`;
 }
 
@@ -88,7 +88,8 @@ export function createRateLimiter({ name, windowMs, limit, keyGenerator, store }
     // transient store outage; readiness still reports Redis unavailable.
     passOnStoreError: true,
     logger: {
-      error: (error, message) => logger.warn({ event: 'rate_limit_store_error', policy: name, error, message })
+      error: (error, message) => logger.warn({ event: 'rate_limit_store_error', policy: name, error, message }),
+      warn: (warning, message) => logger.warn({ event: 'rate_limit_warning', policy: name, warning, message })
     },
     handler: (req, res) => {
       const retryAfter = res.getHeader('retry-after');

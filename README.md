@@ -354,8 +354,18 @@ dependency never causes an orchestrator to kill an otherwise-healthy process. `G
 aliased at `/health`) independently checks PostgreSQL (`SELECT 1`), Temporal (`getSystemInfo`), and Redis
 (`PING`), returning `503` with a per-dependency breakdown if any is unreachable.
 
-HTTP rate limits (login, and appointment/schedule mutation endpoints) are backed by Redis (`REDIS_URL`)
-rather than in-process memory, so limits stay correct once the backend runs as more than one replica.
+HTTP rate limits use `express-rate-limit` with `rate-limit-redis` and the process-wide `ioredis` client,
+so atomic fixed-window counters are shared by every backend replica. Defaults are 5 login attempts/minute
+per IP plus 10/15 minutes per normalized-and-hashed account, 10 bookings/minute per authenticated user,
+20 confirms and 20 cancellations/minute per authenticated user, and 30 management mutations/minute per
+authenticated user. Every limit and window has a validated `RATE_LIMIT_*` environment variable.
+
+Blocked requests return `429` with `Retry-After`, standard `RateLimit` headers, and a stable
+`RATE_LIMIT_EXCEEDED` JSON error. Redis store errors are logged and fail open so an abuse-control outage
+does not bypass authentication, authorization, idempotency, Temporal orchestration, or PostgreSQL booking
+constraints; readiness still reports Redis unavailable. `TRUST_PROXY_HOPS` defaults to `0`. Set it only
+to the exact number of reverse proxies/load balancers in front of Express so client IP keys use trusted
+forwarding data without accepting arbitrary `X-Forwarded-For` headers.
 
 `TEMPORAL_TLS` and `TEMPORAL_API_KEY` let the backend and Worker connect to a TLS-secured Temporal cluster
 or Temporal Cloud (API-key auth implies TLS); both default to plaintext for the local Compose network.
