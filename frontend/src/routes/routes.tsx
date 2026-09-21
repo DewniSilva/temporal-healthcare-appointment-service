@@ -13,6 +13,7 @@ import { AppointmentLookupPage } from '../features/appointments/AppointmentLooku
 import { ProfilePage } from './ProfilePage';
 import { UnauthorizedPage } from './UnauthorizedPage';
 import { NotFoundPage } from './NotFoundPage';
+import { SchedulePage } from '../features/schedule/SchedulePage';
 
 export function AppRoutes() {
   return (
@@ -36,6 +37,9 @@ export function AppRoutes() {
 
           <Route element={<RoleRoute allow={['PATIENT', 'ADMIN']} />}>
             <Route path="/appointments/new" element={<BookingPage />} />
+          </Route>
+          <Route element={<RoleRoute allow={['DOCTOR', 'ADMIN']} />}>
+            <Route path="/schedule" element={<SchedulePage />} />
           </Route>
           <Route path="/appointments/lookup" element={<AppointmentLookupPage />} />
           <Route path="/appointments/:id" element={<AppointmentDetailPage />} />

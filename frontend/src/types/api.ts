@@ -32,6 +32,41 @@ export interface Appointment {
   updatedAt: string;
 }
 
+export interface AppointmentListItem {
+  id: string;
+  appointmentTime: string;
+  status: AppointmentStatus;
+  confirmedAt: string | null;
+  updatedAt: string;
+  patient: { id: string; displayName: string };
+  doctor: { id: string; displayName: string };
+  actionRequired: boolean;
+}
+
+export interface AppointmentListResponse {
+  items: AppointmentListItem[];
+  nextCursor: string | null;
+  total: number;
+}
+
+export interface AppointmentSummary {
+  total: number;
+  byStatus: Record<AppointmentStatus, number>;
+  actionRequired: number;
+}
+
+export interface AppointmentListQuery {
+  status?: AppointmentStatus[];
+  from?: string;
+  to?: string;
+  doctorId?: string;
+  patientId?: string;
+  view?: 'today' | 'upcoming' | 'past' | 'action-required';
+  cursor?: string;
+  limit?: number;
+  sort?: 'appointmentTime:asc' | 'appointmentTime:desc';
+}
+
 export interface AppointmentWorkflowState {
   appointmentStatus: AppointmentStatus;
   reservationStatus: ReservationStatus | null;
@@ -80,6 +115,9 @@ export interface AvailableSlotsResponse {
   date: string;
   slots: AvailableSlot[];
 }
+
+export interface DoctorAvailability { id: string; doctorId: string; dayOfWeek: number; startTime: string; endTime: string; isActive: boolean; }
+export interface DoctorScheduleException { id: string; doctorId: string; date: string; type: 'UNAVAILABLE' | 'CUSTOM_HOURS'; startTime: string | null; endTime: string | null; reason: string | null; }
 
 export interface ApiErrorBody {
   error: {

@@ -2,11 +2,9 @@ import { Link } from 'react-router-dom';
 import { CalendarPlus } from 'lucide-react';
 import { useAuth } from '../auth/useAuth';
 import { Card, CardHeader } from '../../components/ui/Card';
-import { listRecentAppointments } from '../appointments/recentAppointments';
-import { useRecentAppointmentsData } from '../appointments/hooks/useRecentAppointmentsData';
-import { RecentAppointmentsList } from '../appointments/components/RecentAppointmentsList';
-import { StatusSummaryCards, STATUS_SUMMARY_MIN_ENTRIES } from '../appointments/components/StatusSummaryCards';
 import { QuickLookupForm } from '../appointments/components/QuickLookupForm';
+import { useAppointmentList } from '../appointments/hooks/useAppointmentList';
+import { AppointmentWorklist } from '../appointments/components/AppointmentWorklist';
 
 const bookLinkClasses = [
   'inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2.5',
@@ -17,8 +15,8 @@ const bookLinkClasses = [
 
 export function PatientDashboard() {
   const { user } = useAuth();
-  const entries = listRecentAppointments();
-  const { appointments } = useRecentAppointmentsData(entries);
+  const upcoming = useAppointmentList({ view: 'upcoming', limit: 20, sort: 'appointmentTime:asc' });
+  const history = useAppointmentList({ view: 'past', limit: 20, sort: 'appointmentTime:desc' });
 
   return (
     <div className="space-y-6">
@@ -37,28 +35,22 @@ export function PatientDashboard() {
         </div>
       </Card>
 
-      {appointments.length >= STATUS_SUMMARY_MIN_ENTRIES && (
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <Card>
-          <CardHeader title="Your appointment status summary" />
-          <StatusSummaryCards appointments={appointments} />
+          <CardHeader title="Upcoming appointments" />
+          <AppointmentWorklist appointments={upcoming.data?.items ?? []} isLoading={upcoming.isLoading} isError={upcoming.isError} counterpart="doctor" emptyTitle="No upcoming appointments" emptyDescription="Appointments you book will appear here." />
         </Card>
-      )}
+        <Card>
+          <CardHeader title="Appointment history" />
+          <AppointmentWorklist appointments={history.data?.items ?? []} isLoading={history.isLoading} isError={history.isError} counterpart="doctor" emptyTitle="No appointment history" emptyDescription="Past appointments will appear here." />
+        </Card>
+      </div>
 
       <Card>
         <CardHeader title="Find an appointment" description="Look up any appointment by its ID." />
         <QuickLookupForm />
       </Card>
 
-      <Card>
-        <CardHeader
-          title="Recent appointments on this device"
-          description="Appointments you have booked or viewed in this browser."
-        />
-        <RecentAppointmentsList
-          entries={entries}
-          emptyDescription="Appointments you book or open will show up here for quick access."
-        />
-      </Card>
     </div>
   );
 }

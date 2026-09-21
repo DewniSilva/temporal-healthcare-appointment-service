@@ -1,14 +1,19 @@
-import { CalendarClock, CalendarDays, Info } from 'lucide-react';
+import { Info, TriangleAlert } from 'lucide-react';
 import { useAuth } from '../auth/useAuth';
 import { Card, CardHeader } from '../../components/ui/Card';
-import { EmptyState } from '../../components/ui/EmptyState';
 import { listRecentAppointments } from '../appointments/recentAppointments';
 import { RecentAppointmentsList } from '../appointments/components/RecentAppointmentsList';
 import { QuickLookupForm } from '../appointments/components/QuickLookupForm';
+import { AppointmentWorklist } from '../appointments/components/AppointmentWorklist';
+import { useAppointmentList } from '../appointments/hooks/useAppointmentList';
+import { DoctorOutcomeActions } from '../appointments/components/DoctorOutcomeActions';
 
 export function DoctorDashboard() {
   const { user } = useAuth();
   const entries = listRecentAppointments();
+  const today = useAppointmentList({ view: 'today', limit: 20, sort: 'appointmentTime:asc' });
+  const upcoming = useAppointmentList({ view: 'upcoming', limit: 20, sort: 'appointmentTime:asc' });
+  const attention = useAppointmentList({ view: 'action-required', limit: 20, sort: 'appointmentTime:asc' });
 
   return (
     <div className="space-y-6">
@@ -24,21 +29,18 @@ export function DoctorDashboard() {
       <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
         <Card>
           <CardHeader title="Today's appointments" />
-          <EmptyState
-            icon={CalendarDays}
-            title="Not available yet"
-            description="Listing today's assigned appointments requires a backend endpoint that does not exist yet (e.g. GET /appointments?doctorId=...). Use lookup by ID below in the meantime."
-          />
+          <AppointmentWorklist appointments={today.data?.items ?? []} isLoading={today.isLoading} isError={today.isError} counterpart="patient" emptyTitle="No appointments today" emptyDescription="Your assigned appointments for today will appear here." actions={(appointment) => <DoctorOutcomeActions appointment={appointment} />} />
         </Card>
         <Card>
           <CardHeader title="Upcoming appointments" />
-          <EmptyState
-            icon={CalendarClock}
-            title="Not available yet"
-            description="This panel is ready to display upcoming assigned appointments once a list endpoint is added to the backend."
-          />
+          <AppointmentWorklist appointments={upcoming.data?.items ?? []} isLoading={upcoming.isLoading} isError={upcoming.isError} counterpart="patient" emptyTitle="No upcoming appointments" emptyDescription="Your next assigned appointments will appear here." />
         </Card>
       </div>
+
+      <Card>
+        <CardHeader title="Requires attention" description="Overdue confirmed appointments or appointments with a failed reminder." action={<TriangleAlert className="h-5 w-5 text-amber-500" aria-hidden="true" />} />
+        <AppointmentWorklist appointments={attention.data?.items ?? []} isLoading={attention.isLoading} isError={attention.isError} counterpart="patient" emptyTitle="Nothing requires attention" emptyDescription="This worklist is clear." />
+      </Card>
 
       <Card>
         <CardHeader title="Find an appointment" description="Look up any assigned appointment by its ID." />

@@ -12,7 +12,7 @@ export function setUnauthorizedHandler(handler: UnauthorizedHandler | null): voi
 }
 
 export interface RequestOptions {
-  method?: 'GET' | 'POST';
+  method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
   body?: unknown;
   idempotencyKey?: string;
   signal?: AbortSignal;
