@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createAppointmentSchema, idempotencyKeySchema } from '../src/backend/api/appointment.schema';
+import { appointmentListQuerySchema, createAppointmentSchema, idempotencyKeySchema } from '../src/backend/api/appointment.schema';
 import { appointmentIdForIdempotencyKey } from '../src/backend/api/idempotency';
 import { assertCanAct, assertCanCreate, assertCanRead } from '../src/backend/auth/authorization';
 import { AppError } from '../src/backend/api/errors';
@@ -33,6 +33,22 @@ describe('request validation and authorization', () => {
     const first = appointmentIdForIdempotencyKey('user-001', 'booking-request-001');
     expect(appointmentIdForIdempotencyKey('user-001', 'booking-request-001')).toBe(first);
     expect(appointmentIdForIdempotencyKey('user-002', 'booking-request-001')).not.toBe(first);
+  });
+
+  it('validates bounded, well-ordered appointment worklist filters', () => {
+    const query = appointmentListQuerySchema.parse({
+      status: 'BOOKED,CONFIRMED',
+      from: '2099-01-01T00:00:00Z',
+      to: '2099-01-31T23:59:59Z',
+      view: 'upcoming',
+      limit: '25',
+      sort: 'appointmentTime:asc'
+    });
+    expect(query.status).toEqual(['BOOKED', 'CONFIRMED']);
+    expect(query.limit).toBe(25);
+    expect(() => appointmentListQuerySchema.parse({ limit: '101' })).toThrow();
+    expect(() => appointmentListQuerySchema.parse({ from: '2099-02-01T00:00:00Z', to: '2099-01-01T00:00:00Z' })).toThrow();
+    expect(() => appointmentListQuerySchema.parse({ unexpected: 'field' })).toThrow();
   });
 
   it('enforces patient ownership for create, read and state changes', () => {

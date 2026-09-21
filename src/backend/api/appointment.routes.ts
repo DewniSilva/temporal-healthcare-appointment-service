@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { cancel, complete, confirm, createAppointment, markNoShow, readAppointment, readWorkflow } from './appointment.controller';
+import { cancel, complete, confirm, createAppointment, markNoShow, readAppointment, readAppointments, readWorkflow } from './appointment.controller';
 import { requireAuth } from './middleware/auth.middleware';
 import { createAuthenticatedRateLimiter } from './middleware/rateLimit.middleware';
 
@@ -16,6 +16,7 @@ export function createAppointmentRouter(): Router {
   const appointmentRouter = Router();
 
   appointmentRouter.use(requireAuth);
+  appointmentRouter.get('/', readAppointments);
   appointmentRouter.post('/', bookingLimiter, createAppointment);
   appointmentRouter.get('/:id', readAppointment);
   appointmentRouter.get('/:id/workflow', readWorkflow);

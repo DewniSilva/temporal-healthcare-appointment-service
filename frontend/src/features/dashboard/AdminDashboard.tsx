@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { CalendarPlus, ExternalLink, Info } from 'lucide-react';
+import { CalendarPlus, ExternalLink, Info, TriangleAlert } from 'lucide-react';
 import { Card, CardHeader } from '../../components/ui/Card';
 import { HealthCard } from '../health/HealthCard';
 import { listRecentAppointments } from '../appointments/recentAppointments';
@@ -8,10 +8,14 @@ import { RecentAppointmentsList } from '../appointments/components/RecentAppoint
 import { StatusSummaryCards } from '../appointments/components/StatusSummaryCards';
 import { QuickLookupForm } from '../appointments/components/QuickLookupForm';
 import { env } from '../../lib/env';
+import { AppointmentWorklist } from '../appointments/components/AppointmentWorklist';
+import { useAppointmentList } from '../appointments/hooks/useAppointmentList';
 
 export function AdminDashboard() {
   const entries = listRecentAppointments();
   const { appointments } = useRecentAppointmentsData(entries);
+  const recent = useAppointmentList({ limit: 25, sort: 'appointmentTime:desc' });
+  const attention = useAppointmentList({ view: 'action-required', limit: 25, sort: 'appointmentTime:asc' });
 
   return (
     <div className="space-y-6">
@@ -46,11 +50,20 @@ export function AdminDashboard() {
         </div>
       </Card>
 
+      <Card>
+        <CardHeader
+          title="Requires attention"
+          description={`System-wide worklist${attention.data ? ` · ${attention.data.total} appointment${attention.data.total === 1 ? '' : 's'}` : ''}`}
+          action={<TriangleAlert className="h-5 w-5 text-amber-500" aria-hidden="true" />}
+        />
+        <AppointmentWorklist appointments={attention.data?.items ?? []} isLoading={attention.isLoading} isError={attention.isError} counterpart="patient" emptyTitle="Nothing requires attention" emptyDescription="There are no overdue outcomes or failed reminder deliveries." />
+      </Card>
+
       <HealthCard />
 
       <Card>
         <CardHeader
-          title="Local appointment status counts"
+          title="Recently viewed on this device"
           description="Not a global total — see note below."
         />
         <div className="mb-4 flex items-start gap-2 rounded-lg bg-slate-50 p-3 text-xs text-slate-500">
@@ -78,6 +91,11 @@ export function AdminDashboard() {
           entries={entries}
           emptyDescription="Appointments you book or open will show up here for quick access."
         />
+      </Card>
+
+      <Card>
+        <CardHeader title="All appointments" description={`System-wide appointment history${recent.data ? ` · ${recent.data.total} total` : ''}`} />
+        <AppointmentWorklist appointments={recent.data?.items ?? []} isLoading={recent.isLoading} isError={recent.isError} counterpart="patient" emptyTitle="No appointments yet" emptyDescription="Appointments created by patients and staff will appear here." />
       </Card>
     </div>
   );

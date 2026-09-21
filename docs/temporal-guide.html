@@ -1,0 +1,384 @@
+<title>Temporal, End to End</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600;6..72,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+  :root {
+    --paper: #eef1ec;
+    --panel: #ffffff;
+    --panel-2: #f6f8f4;
+    --ink: #1b2420;
+    --ink-soft: #4d5b54;
+    --ink-faint: #7c8a82;
+    --line: #d3d9d0;
+    --line-strong: #b8c0b3;
+    --accent: #2f6e57;
+    --accent-soft: #e2ede8;
+    --accent-ink: #1f4a3b;
+    --accent2: #a85a2a;
+    --accent2-soft: #f3e3d5;
+    --shadow: 0 1px 2px rgba(27,36,32,0.05), 0 10px 28px rgba(27,36,32,0.07);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper: #0d1210;
+      --panel: #141b18;
+      --panel-2: #182019;
+      --ink: #e7ece8;
+      --ink-soft: #aab8b0;
+      --ink-faint: #7c8a82;
+      --line: #26332c;
+      --line-strong: #34443b;
+      --accent: #6bc4a4;
+      --accent-soft: #16241e;
+      --accent-ink: #bfe9d8;
+      --accent2: #e2924f;
+      --accent2-soft: #2c1f14;
+      --shadow: 0 1px 2px rgba(0,0,0,0.35), 0 14px 32px rgba(0,0,0,0.4);
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --paper: #0d1210;
+    --panel: #141b18;
+    --panel-2: #182019;
+    --ink: #e7ece8;
+    --ink-soft: #aab8b0;
+    --ink-faint: #7c8a82;
+    --line: #26332c;
+    --line-strong: #34443b;
+    --accent: #6bc4a4;
+    --accent-soft: #16241e;
+    --accent-ink: #bfe9d8;
+    --accent2: #e2924f;
+    --accent2-soft: #2c1f14;
+    --shadow: 0 1px 2px rgba(0,0,0,0.35), 0 14px 32px rgba(0,0,0,0.4);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: "IBM Plex Sans", system-ui, sans-serif;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  ::selection { background: var(--accent-soft); color: var(--accent-ink); }
+
+  a { color: var(--accent-ink); text-decoration-color: var(--line-strong); text-underline-offset: 2px; }
+  a:hover { text-decoration-color: var(--accent); }
+  a:focus-visible, button:focus-visible, summary:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 2px;
+  }
+
+  h1, h2, h3 {
+    font-family: "Newsreader", Georgia, serif;
+    font-weight: 600;
+    color: var(--ink);
+    text-wrap: balance;
+    letter-spacing: -0.01em;
+  }
+
+  code, .mono {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .wrap { max-width: 920px; margin: 0 auto; padding: 4.5rem 1.75rem 7rem; }
+
+  /* ── Header ─────────────────────────────────────────────────────── */
+
+  header.doc-head { margin-bottom: 4rem; }
+
+  .eyebrow {
+    display: inline-flex; align-items: center; gap: 0.5rem;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.72rem; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--accent-ink);
+    background: var(--accent-soft);
+    border: 1px solid var(--line);
+    padding: 0.32rem 0.7rem 0.3rem;
+    border-radius: 3px;
+    margin-bottom: 1.4rem;
+  }
+  .eyebrow::before { content: "●"; color: var(--accent); font-size: 0.6rem; }
+
+  h1.title { font-size: clamp(2.1rem, 4.4vw, 3rem); line-height: 1.12; margin: 0 0 0.9rem; }
+
+  .dek {
+    font-size: 1.1rem; color: var(--ink-soft); max-width: 62ch; margin: 0;
+    font-family: "Newsreader", Georgia, serif; font-weight: 400; font-style: italic;
+  }
+
+  .head-rule {
+    margin-top: 2.4rem; height: 1px;
+    background: linear-gradient(to right, var(--line-strong), transparent 85%);
+  }
+
+  /* ── Chapter rail ───────────────────────────────────────────────── */
+
+  .chapter {
+    display: grid; grid-template-columns: 44px 1fr; gap: 1.6rem;
+    position: relative;
+    padding-bottom: 3.4rem;
+  }
+  .chapter:last-of-type { padding-bottom: 0; }
+
+  .rail { position: relative; }
+  .rail::before {
+    content: ""; position: absolute; left: 21px; top: 46px; bottom: -3.4rem;
+    width: 1px; background: var(--line);
+  }
+  .chapter:last-of-type .rail::before { display: none; }
+
+  .rail-num {
+    width: 42px; height: 42px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-family: "IBM Plex Mono", monospace; font-size: 0.85rem; font-weight: 600;
+    background: var(--panel); color: var(--accent-ink);
+    border: 1px solid var(--line-strong);
+    box-shadow: var(--shadow);
+  }
+
+  .chapter-body h2 { font-size: 1.5rem; margin: 0.1rem 0 0.2rem; }
+  .chapter-body > .lede { color: var(--ink-soft); margin: 0 0 1.3rem; max-width: 66ch; }
+
+  .chapter-body p { max-width: 68ch; margin: 0 0 1.05rem; }
+  .chapter-body ul, .chapter-body ol { max-width: 66ch; margin: 0 0 1.1rem; padding-left: 1.3rem; }
+  .chapter-body li { margin-bottom: 0.45rem; }
+  .chapter-body li::marker { color: var(--accent-ink); }
+
+  strong { color: var(--ink); font-weight: 600; }
+
+  /* ── Inline code chips ──────────────────────────────────────────── */
+
+  p code, li code, td code {
+    background: var(--panel-2);
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    padding: 0.1em 0.4em;
+    font-size: 0.86em;
+    color: var(--accent-ink);
+    white-space: nowrap;
+  }
+
+  .file {
+    display: inline-block;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.86em;
+    color: var(--ink-soft);
+    border-bottom: 1px dashed var(--line-strong);
+  }
+
+  /* ── Tables ─────────────────────────────────────────────────────── */
+
+  .table-scroll { overflow-x: auto; margin: 0 0 1.4rem; border: 1px solid var(--line); border-radius: 6px; box-shadow: var(--shadow); }
+  table { border-collapse: collapse; width: 100%; background: var(--panel); font-size: 0.92rem; }
+  th, td { text-align: left; padding: 0.65rem 0.9rem; border-bottom: 1px solid var(--line); vertical-align: top; }
+  thead th {
+    font-family: "IBM Plex Mono", monospace; font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--ink-faint); background: var(--panel-2); border-bottom: 1px solid var(--line-strong);
+  }
+  tbody tr:last-child td { border-bottom: none; }
+  td:first-child { font-family: "IBM Plex Mono", monospace; font-weight: 600; color: var(--ink); white-space: nowrap; }
+
+  /* ── Callouts ───────────────────────────────────────────────────── */
+
+  .rule-box {
+    display: flex; gap: 0.9rem; align-items: flex-start;
+    background: var(--accent2-soft);
+    border: 1px solid color-mix(in srgb, var(--accent2) 35%, var(--line));
+    border-radius: 6px;
+    padding: 1rem 1.2rem;
+    margin: 0 0 1.3rem;
+    max-width: 68ch;
+  }
+  .rule-box .mark {
+    font-family: "IBM Plex Mono", monospace; font-weight: 600; font-size: 0.75rem;
+    letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent2);
+    flex-shrink: 0; padding-top: 0.15rem;
+  }
+  .rule-box p { margin: 0; color: var(--ink); }
+
+  /* ── Status chain diagram ───────────────────────────────────────── */
+
+  .chain-wrap { margin: 1.6rem 0 1.8rem; }
+  .chain-label { font-family: "IBM Plex Mono", monospace; font-size: 0.72rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-faint); margin: 0 0 0.7rem; }
+  .chain {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem;
+  }
+  .pill {
+    font-family: "IBM Plex Mono", monospace; font-size: 0.78rem; font-weight: 600;
+    padding: 0.4rem 0.75rem; border-radius: 999px; white-space: nowrap;
+    border: 1px solid var(--line-strong); background: var(--panel); color: var(--ink-soft);
+  }
+  .pill.on { color: var(--accent-ink); background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 45%, var(--line-strong)); }
+  .arrow { color: var(--ink-faint); font-size: 0.95rem; }
+  .chain.branch { margin-top: 0.55rem; }
+  .chain.branch .pill { color: var(--accent2); background: var(--accent2-soft); border-color: color-mix(in srgb, var(--accent2) 40%, var(--line-strong)); }
+  .branch-label { font-size: 0.82rem; color: var(--ink-faint); margin-right: 0.35rem; }
+
+  /* ── Footer ─────────────────────────────────────────────────────── */
+
+  footer.doc-foot {
+    margin-top: 4rem; padding-top: 1.6rem; border-top: 1px solid var(--line);
+    font-size: 0.85rem; color: var(--ink-faint);
+    display: grid; grid-template-columns: 44px 1fr; gap: 1.6rem;
+  }
+  footer.doc-foot p { margin: 0; max-width: 60ch; }
+
+  @media (max-width: 620px) {
+    .chapter, footer.doc-foot { grid-template-columns: 1fr; }
+    .rail { display: none; }
+  }
+</style>
+
+<div class="wrap">
+
+  <header class="doc-head">
+    <span class="eyebrow">Engineering Guide</span>
+    <h1 class="title">Temporal, End to End</h1>
+    <p class="dek">What durable execution actually is, when it earns its place in a system, and exactly how this appointment service is built on it.</p>
+    <div class="head-rule"></div>
+  </header>
+
+  <main>
+
+    <section class="chapter">
+      <div class="rail"><div class="rail-num">01</div></div>
+      <div class="chapter-body">
+        <h2>What Temporal actually is</h2>
+        <p>Temporal is a <strong>durable execution engine</strong>. You write ordinary-looking async code — a function that calls other functions, sleeps, waits for input — and Temporal guarantees that code runs to completion exactly once from the caller's perspective, even if the process executing it crashes, the server restarts, or the wait spans days. No hand-written retry loops, cron jobs, or state-machine tables required.</p>
+        <p>The mechanism: Temporal doesn't keep your workflow "running" in a process. It records every meaningful thing that happens inside it — a step started, a step finished, a timer fired, a signal arrived — as an <strong>event history</strong> in its own database. If the worker holding your workflow dies, a new worker picks up the history, <strong>replays</strong> it (re-executing your function, but feeding back already-recorded results instead of redoing the work), and continues exactly where it left off — new process, same execution.</p>
+      </div>
+    </section>
+
+    <section class="chapter">
+      <div class="rail"><div class="rail-num">02</div></div>
+      <div class="chapter-body">
+        <h2>Core concepts</h2>
+        <p class="lede">The vocabulary Temporal introduces, mapped to where each piece actually lives in this codebase.</p>
+        <div class="table-scroll">
+          <table>
+            <thead><tr><th>Concept</th><th>What it is</th><th>In this repo</th></tr></thead>
+            <tbody>
+              <tr><td>Workflow</td><td>Your orchestration function — deterministic, durable, can run for years</td><td><span class="file">appointment.workflow.ts</span>, <span class="file">reconciliation.workflow.ts</span></td></tr>
+              <tr><td>Activity</td><td>A single side-effecting step (DB write, email send) — retried independently, need not be deterministic</td><td><span class="file">appointment.activities.ts</span>, <span class="file">reservation.activities.ts</span>, <span class="file">reminder.activities.ts</span></td></tr>
+              <tr><td>Worker</td><td>A process that polls a task queue and executes workflow/activity code</td><td><span class="file">worker/worker.ts</span></td></tr>
+              <tr><td>Task Queue</td><td>The named channel workers poll and clients dispatch to</td><td><code>healthcare-appointments</code></td></tr>
+              <tr><td>Client</td><td>Used by other processes (the API) to start / signal / query workflows</td><td><span class="file">backend/temporal/client.ts</span></td></tr>
+              <tr><td>Signal</td><td>Async, fire-and-forget message delivered into a running workflow</td><td>confirm, cancel, complete, no-show</td></tr>
+              <tr><td>Query</td><td>Synchronous read of a running workflow's in-memory state</td><td><code>appointmentState</code></td></tr>
+              <tr><td>Timer (<code>sleep</code>)</td><td>A durable wait — no held thread, survives restarts</td><td>throughout <code>appointmentWorkflow</code></td></tr>
+              <tr><td>Schedule</td><td>Temporal's native cron equivalent</td><td><span class="file">reconciliationSchedule.ts</span></td></tr>
+              <tr><td>Workflow ID policy</td><td>Business-level idempotency — one ID, one execution, ever</td><td><code>appointment-&lt;id&gt;</code></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="rule-box">
+          <span class="mark">Hard rule</span>
+          <p>Workflow code must be <strong>deterministic</strong>. No <code>Date.now()</code>, <code>Math.random()</code>, or direct DB/network calls inside a workflow — those live in Activities, called through a typed <code>proxyActivities&lt;T&gt;()</code> proxy. This repo enforces the boundary with a real test — <span class="file">tests/architecture.test.ts</span> — that fails the build if a workflow file imports Prisma, <code>fs</code>, <code>crypto</code>, config, or logging.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="chapter">
+      <div class="rail"><div class="rail-num">03</div></div>
+      <div class="chapter-body">
+        <h2>When to reach for it</h2>
+        <p>Use Temporal when a process has <strong>two or more</strong> of these traits:</p>
+        <ul>
+          <li>Steps that must survive a crash between them — not just retry the whole thing from scratch</li>
+          <li>A wait measured in minutes, hours, or days, not milliseconds</li>
+          <li>A need for a human or external signal to arrive mid-process</li>
+          <li>Multiple side effects that must either all stick or be compensated (a saga)</li>
+          <li>A need for at-least-once execution with per-step retries and backoff</li>
+        </ul>
+        <p>Skip it for a plain synchronous request/response, a short pipeline with no external wait, or anything a database transaction alone already makes durable. It's also the wrong call if the team can't tolerate running an extra stateful service — Temporal Server plus its own Postgres.</p>
+      </div>
+    </section>
+
+    <section class="chapter">
+      <div class="rail"><div class="rail-num">04</div></div>
+      <div class="chapter-body">
+        <h2>Why it beats the alternative</h2>
+        <p>The alternative to Temporal for this appointment flow: a <code>status</code> column, a cron job polling for reminders due, a queue for retries, a distributed lock to avoid double-processing, a saga table for compensation, and reconciliation scripts for whatever falls through the cracks. Five separate pieces of infrastructure, each with its own failure modes, to reproduce what Temporal gives as one execution model —</p>
+        <ul>
+          <li>durable timers, with no polling table for "send this in three days"</li>
+          <li>per-activity retry and backoff, with typed non-retryable errors</li>
+          <li>one place — event history — to see exactly what happened to one appointment</li>
+          <li>workflow-ID collision handling as the idempotency mechanism, instead of a hand-rolled dedupe table</li>
+        </ul>
+        <p>The cost is real too: an extra service to operate, a determinism constraint on workflow code, and a learning curve around replay semantics. See <span class="file">SYSTEM_REPORT.md §4.2</span> for the fuller trade-off writeup.</p>
+      </div>
+    </section>
+
+    <section class="chapter">
+      <div class="rail"><div class="rail-num">05</div></div>
+      <div class="chapter-body">
+        <h2>Building one, step by step</h2>
+        <ol>
+          <li><strong>Run Temporal Server</strong> — self-hosted via Docker Compose, or Temporal Cloud. Self-hosted needs its own persistence store (Postgres/Cassandra/MySQL) and a visibility store for search.</li>
+          <li><strong>Define the contract</strong> — plain TypeScript interfaces shared by both sides: workflow input/output, activity signatures, signal/query names. Centralized here in <span class="file">shared/temporal/contracts.ts</span>, <span class="file">signals.ts</span>, <span class="file">queries.ts</span> so client and worker can't drift apart.</li>
+          <li><strong>Write activities</strong> — plain async functions with real side effects. Each throws typed errors the workflow's retry policy can classify as retryable or not.</li>
+          <li><strong>Write the workflow</strong> — <code>proxyActivities&lt;T&gt;({ startToCloseTimeout, scheduleToCloseTimeout, retry })</code> for a typed, retry-wrapped activity handle; <code>setHandler</code> for signals and queries; <code>sleep</code> / <code>condition</code> / <code>Promise.race</code> for durable waits raced against signals.</li>
+          <li><strong>Run a Worker</strong> — <code>Worker.create({ connection, taskQueue, workflowsPath, activities })</code>, then <code>worker.run()</code>. One process, polling the task queue for both workflow replay and activity execution.</li>
+          <li><strong>Start / signal / query from the API</strong> — a <code>Client</code> on the same server and namespace; <code>workflow.start / getHandle / signal / query</code>, using a stable, business-derived workflow ID for idempotency plus a reuse/conflict policy that matches the semantics you want.</li>
+          <li><strong>Add Schedules</strong> for anything cron-shaped, instead of standing up a separate cron container.</li>
+          <li><strong>Test with time-skipping</strong> — <code>@temporalio/testing</code>'s <code>TestWorkflowEnvironment</code> asserts on a workflow that "waits three days" without waiting, by advancing a mocked clock.</li>
+          <li><strong>Instrument it</strong> — Temporal ships OpenTelemetry interceptors for worker and client, so workflow and activity spans land in the same trace as the HTTP request that started them.</li>
+        </ol>
+      </div>
+    </section>
+
+    <section class="chapter">
+      <div class="rail"><div class="rail-num">06</div></div>
+      <div class="chapter-body">
+        <h2>How this system uses it</h2>
+        <p><strong>One workflow per appointment</strong>, keyed by a deterministic workflow ID — <code>appointment-&lt;appointmentId&gt;</code> — where <code>appointmentId</code> itself is derived from <code>(userId, idempotencyKey)</code> in <span class="file">appointment.service.ts</span>. A retried HTTP request can never spawn two workflows: <code>workflowIdConflictPolicy: FAIL</code> plus <code>workflowIdReusePolicy: REJECT_DUPLICATE</code> turn a duplicate start into a clean <code>ALREADY_STARTED</code> response instead of an error.</p>
+
+        <p>The workflow carries an appointment through a single state machine, from request to a terminal outcome:</p>
+
+        <div class="chain-wrap">
+          <p class="chain-label">Primary path</p>
+          <div class="chain">
+            <span class="pill on">REQUESTED</span><span class="arrow">→</span>
+            <span class="pill on">RESERVING</span><span class="arrow">→</span>
+            <span class="pill on">BOOKED</span><span class="arrow">→</span>
+            <span class="pill on">CONFIRMED</span><span class="arrow">→</span>
+            <span class="pill on">COMPLETED</span>
+          </div>
+          <div class="chain branch">
+            <span class="branch-label">terminal off-ramps —</span>
+            <span class="pill">REJECTED</span>
+            <span class="pill">BOOKING_FAILED</span>
+            <span class="pill">CANCELLED</span>
+            <span class="pill">NO_RESPONSE</span>
+            <span class="pill">NO_SHOW</span>
+          </div>
+        </div>
+
+        <p>Along that path, <span class="file">appointment.workflow.ts</span>:</p>
+        <ul>
+          <li>Validates the booking, then reserves the doctor's slot via an activity. If reservation fails, it <strong>compensates</strong> — releasing the slot and marking <code>BOOKING_FAILED</code> — a saga written by hand in workflow code, not a Temporal-native primitive.</li>
+          <li>Registers signal handlers (<code>confirmAppointment</code>, <code>cancelAppointment</code>, <code>markAppointmentCompleted</code>, <code>markAppointmentNoShow</code>) and a query handler (<code>appointmentState</code>) up front, via <code>setHandler</code>.</li>
+          <li>Repeatedly uses <code>Promise.race([sleep(duration), condition(() =&gt; confirmed || cancelled)])</code> — the idiomatic pattern for "wait until a durable timer fires or a signal arrives, whichever comes first." This is how the confirmation deadline, the upcoming-appointment reminder, and the appointment-time wait are all implemented, with no polling anywhere.</li>
+          <li>Separates retryable infrastructure failures from genuine business conflicts via <code>nonRetryableErrorTypes</code> on the activity proxy — <code>DOCTOR_UNAVAILABLE</code> fails fast, a transient DB error retries with backoff.</li>
+          <li>Treats reminder sends as <strong>best-effort</strong>: a failed reminder never aborts the appointment lifecycle. Only the reconciliation sweep retries it later.</li>
+        </ul>
+
+        <p>A second workflow, <code>reconciliationWorkflow</code>, runs on a <strong>Temporal Schedule</strong> created idempotently at backend startup (<span class="file">reconciliationSchedule.ts</span>). It sweeps for state the primary workflow couldn't self-heal — stale slot reservations, orphaned reminders, retryable failed reminders, and appointments stuck past their expected transition — logging anything ambiguous for a human rather than guessing. <code>ScheduleOverlapPolicy.SKIP</code> guarantees two sweeps never run over the same rows at once.</p>
+
+        <p>The backend never touches worker code — it only imports the shared contracts and talks to Temporal through <code>Client.workflow.start / getHandle / signal / query</code>, a boundary the architecture test enforces mechanically. That separation is what makes a durable, resumable, multi-day appointment lifecycle possible without the API process ever holding a timer, a queue consumer, or an in-memory state machine of its own.</p>
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="doc-foot">
+    <div></div>
+    <p>temporal-healthcare-appointment-service — internal engineering documentation.</p>
+  </footer>
+
+</div>

@@ -1,12 +1,29 @@
 import { apiRequest } from '../../lib/apiClient';
 import type {
   Appointment,
+  AppointmentListQuery,
+  AppointmentListResponse,
   AppointmentWorkflowState,
   AvailableSlotsResponse,
   CreateAppointmentRequest,
   SignalResponse,
   StartAppointmentResponse
 } from '../../types/api';
+
+export function getAppointments(query: AppointmentListQuery = {}, signal?: AbortSignal): Promise<AppointmentListResponse> {
+  const params = new URLSearchParams();
+  if (query.status?.length) params.set('status', query.status.join(','));
+  if (query.from) params.set('from', query.from);
+  if (query.to) params.set('to', query.to);
+  if (query.doctorId) params.set('doctorId', query.doctorId);
+  if (query.patientId) params.set('patientId', query.patientId);
+  if (query.view) params.set('view', query.view);
+  if (query.cursor) params.set('cursor', query.cursor);
+  if (query.limit) params.set('limit', String(query.limit));
+  if (query.sort) params.set('sort', query.sort);
+  const suffix = params.size > 0 ? `?${params.toString()}` : '';
+  return apiRequest<AppointmentListResponse>(`/appointments${suffix}`, { signal });
+}
 
 export function getAvailableSlots(
   doctorId: string,

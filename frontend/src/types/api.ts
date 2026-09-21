@@ -32,6 +32,35 @@ export interface Appointment {
   updatedAt: string;
 }
 
+export interface AppointmentListItem {
+  id: string;
+  appointmentTime: string;
+  status: AppointmentStatus;
+  confirmedAt: string | null;
+  updatedAt: string;
+  patient: { id: string; displayName: string };
+  doctor: { id: string; displayName: string };
+  actionRequired: boolean;
+}
+
+export interface AppointmentListResponse {
+  items: AppointmentListItem[];
+  nextCursor: string | null;
+  total: number;
+}
+
+export interface AppointmentListQuery {
+  status?: AppointmentStatus[];
+  from?: string;
+  to?: string;
+  doctorId?: string;
+  patientId?: string;
+  view?: 'today' | 'upcoming' | 'past' | 'action-required';
+  cursor?: string;
+  limit?: number;
+  sort?: 'appointmentTime:asc' | 'appointmentTime:desc';
+}
+
 export interface AppointmentWorkflowState {
   appointmentStatus: AppointmentStatus;
   reservationStatus: ReservationStatus | null;
