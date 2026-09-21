@@ -1,6 +1,6 @@
 import type { Request, Response } from 'express';
 import { appointmentListQuerySchema, appointmentParamsSchema, createAppointmentSchema, idempotencyKeySchema } from './appointment.schema';
-import { getAuthorizedAppointment, getWorkflowState, listAppointments, signalAppointment, startAppointment } from './appointment.service';
+import { getAppointmentSummary, getAuthorizedAppointment, getWorkflowState, listAppointments, signalAppointment, startAppointment } from './appointment.service';
 import { AppError } from './errors';
 
 export async function createAppointment(req: Request, res: Response): Promise<void> {
@@ -20,6 +20,10 @@ export async function readAppointment(req: Request, res: Response): Promise<void
 export async function readAppointments(req: Request, res: Response): Promise<void> {
   const query = appointmentListQuerySchema.parse(req.query);
   res.json(await listAppointments(query, req.auth!));
+}
+
+export async function readAppointmentSummary(req: Request, res: Response): Promise<void> {
+  res.json(await getAppointmentSummary(req.auth!));
 }
 
 export async function readWorkflow(req: Request, res: Response): Promise<void> {

@@ -1,6 +1,7 @@
 import type { LucideIcon } from 'lucide-react';
 import {
   CalendarPlus,
+  CalendarCog,
   LayoutDashboard,
   Search,
   UserCircle
@@ -15,6 +16,12 @@ export interface NavItem {
 }
 
 export const navItems: NavItem[] = [
+  {
+    to: '/schedule',
+    label: 'Manage schedule',
+    icon: CalendarCog,
+    roles: ['DOCTOR', 'ADMIN']
+  },
   {
     to: '/dashboard',
     label: 'Dashboard',
@@ -50,6 +57,7 @@ const pageTitles: Array<{ pattern: RegExp; title: string }> = [
   { pattern: /^\/appointments\/new$/, title: 'Book appointment' },
   { pattern: /^\/appointments\/lookup$/, title: 'Find appointment' },
   { pattern: /^\/appointments\/[^/]+$/, title: 'Appointment details' },
+  { pattern: /^\/schedule$/, title: 'Manage schedule' },
   { pattern: /^\/profile$/, title: 'Profile' },
   { pattern: /^\/unauthorized$/, title: 'Access denied' }
 ];

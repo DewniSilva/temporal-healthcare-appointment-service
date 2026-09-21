@@ -49,6 +49,12 @@ export interface AppointmentListResponse {
   total: number;
 }
 
+export interface AppointmentSummary {
+  total: number;
+  byStatus: Record<AppointmentStatus, number>;
+  actionRequired: number;
+}
+
 export interface AppointmentListQuery {
   status?: AppointmentStatus[];
   from?: string;
@@ -109,6 +115,9 @@ export interface AvailableSlotsResponse {
   date: string;
   slots: AvailableSlot[];
 }
+
+export interface DoctorAvailability { id: string; doctorId: string; dayOfWeek: number; startTime: string; endTime: string; isActive: boolean; }
+export interface DoctorScheduleException { id: string; doctorId: string; date: string; type: 'UNAVAILABLE' | 'CUSTOM_HOURS'; startTime: string | null; endTime: string | null; reason: string | null; }
 
 export interface ApiErrorBody {
   error: {

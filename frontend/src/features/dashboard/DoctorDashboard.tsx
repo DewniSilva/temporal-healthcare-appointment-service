@@ -6,6 +6,7 @@ import { RecentAppointmentsList } from '../appointments/components/RecentAppoint
 import { QuickLookupForm } from '../appointments/components/QuickLookupForm';
 import { AppointmentWorklist } from '../appointments/components/AppointmentWorklist';
 import { useAppointmentList } from '../appointments/hooks/useAppointmentList';
+import { DoctorOutcomeActions } from '../appointments/components/DoctorOutcomeActions';
 
 export function DoctorDashboard() {
   const { user } = useAuth();
@@ -28,7 +29,7 @@ export function DoctorDashboard() {
       <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
         <Card>
           <CardHeader title="Today's appointments" />
-          <AppointmentWorklist appointments={today.data?.items ?? []} isLoading={today.isLoading} isError={today.isError} counterpart="patient" emptyTitle="No appointments today" emptyDescription="Your assigned appointments for today will appear here." />
+          <AppointmentWorklist appointments={today.data?.items ?? []} isLoading={today.isLoading} isError={today.isError} counterpart="patient" emptyTitle="No appointments today" emptyDescription="Your assigned appointments for today will appear here." actions={(appointment) => <DoctorOutcomeActions appointment={appointment} />} />
         </Card>
         <Card>
           <CardHeader title="Upcoming appointments" />

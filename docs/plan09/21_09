@@ -1,0 +1,64 @@
+This is a strong workflow foundation. The main opportunity is to turn it from a reliable demo into an efficient clinical product.
+Priority	Improvement	Why it matters
+P0	Add server-side appointment lists: “my appointments,” doctor daily/upcoming schedule, and admin operational queue—filtered, paginated, searchable	The current doctor/admin dashboards explicitly rely on browser-local history and ID lookup, which is not usable in real operations.
+P0	Build a clinician workspace: today’s schedule, patient context, one-click complete/no-show, schedule/leave management	This removes staff dependence on appointment IDs and makes the system practical at reception and in clinics.
+P0	Replace doctor-ID entry with doctor search, specialty/location filters, and a calendar-style slot picker	Booking by opaque doctor ID is the biggest patient usability issue.
+P1	Add self-service reschedule, cancellation reasons, and a waitlist that fills newly released slots	Reduces reception work, no-shows, and unused clinical capacity. Keep rescheduling as a new durable workflow or carefully compensate the old reservation.
+P1	Send actionable reminders: secure one-tap confirm/cancel links, patient notification preferences, then optional SMS/WhatsApp fallback	The backend has good email reliability, but requiring a login to confirm adds friction and increases no-response releases.
+P1	Create a real admin operations dashboard: global counts, failed reminders, stuck workflows, reconciliation findings, schedule conflicts	The system already produces much of this signal, but it is currently available mainly through logs, Prometheus, and Temporal UI.
+P1	Add stronger identity controls before public launch: password reset, MFA/SSO for staff, refresh/revocation strategy, session/device management	The project itself documents that refresh tokens, revocation, asymmetric keys, and key rotation are not yet implemented.
+P2	Make the data model multi-clinic-ready: clinicId, clinic timezone, locations, specialties, rooms, and provider capacity	The current design is deliberately single-clinic and one-timezone. Add tenancy before expanding, rather than retrofitting it after patient data grows.
+P2	Add patient-facing accessibility and language support: simple copy, locale-aware dates, screen-reader checks, translated reminder templates	Healthcare booking is used by a broad range of patients; this improves completion more than visual polish alone.
+P2	Add outcome measurement: booking conversion, slot utilization, cancellation/no-show rate, reminder delivery/confirmation rate, median time to resolve failures	These are the metrics needed to decide which UX and notification changes actually save money.
+
+
+For cost optimisation, I’d take this approach:
+- Keep Temporal for the long-running confirmation/reminder lifecycle; it is solving a real durability problem well.
+- For a small clinic, use managed PostgreSQL, Redis, and Temporal rather than operating a production Temporal cluster yourself. The staff time and incident risk usually outweigh infrastructure savings.
+- Run API and worker as independently autoscaled services. Scale workers on Temporal task-queue backlog and schedule-to-start latency, not CPU alone.
+- Add database indexes based on the new list screens—especially (doctorId, appointmentTime) and filtered/indexed queues for active appointment and reminder work.
+- Use email as the default low-cost channel; reserve SMS/WhatsApp for opt-in, high-value reminders or patients who do not confirm email.
+- Replace repeated workflow-status polling with server-sent events or a small notification channel once traffic grows. The current bounded polling is sensible for a demo, but creates unnecessary API/Temporal reads at scale.
+- Set retention policies for audit logs, observability data, workflow visibility/history, and expired appointments according to your clinical/legal requirements.
+Recommended delivery order:
+1. Appointment list APIs plus doctor/admin dashboards.
+2. Doctor search and calendar booking UI.
+3. Reschedule, waitlist, and actionable confirmation links.
+4. Patient preferences and multichannel reminders.
+5. Multi-clinic/room/specialty model, analytics, and advanced identity controls.
+I made no code changes. Backend type-checking and frontend type-checking/linting pass. The local Temporal workflow test suite reported its 13 lifecycle tests as skipped, so I would also make a containerized Temporal test environment mandatory in developer and CI verification.
+
+
+
+## Security action so far and what next
+
+
+| Security area | Current protection |
+|---|---|
+| Passwords | Stored as bcrypt hashes, not plain text |
+| Login | JWT token is issued only after password verification |
+| Protected APIs | Backend requires `Authorization: Bearer <token>` |
+| Roles | Patient, doctor, and admin permissions are checked in backend code |
+| Data access | A doctor cannot request another doctor’s appointments; patients cannot request another patient’s data |
+| Input validation | Zod validates request bodies, IDs, dates, filters, and page limits |
+| Abuse protection | Login, booking, confirmation, cancellation, and management APIs are rate-limited with Redis |
+| HTTP headers | Helmet adds common browser security headers |
+| Logs | Passwords, tokens, API keys, and database URLs are redacted |
+| Audit trail | Appointment changes create audit-log records |
+| Production config | Production rejects unsafe DB/Redis/Temporal connection settings and weak JWT secrets |
+| Database safety | Prisma parameterized queries reduce SQL-injection risk |
+
+
+1. JWT tokens are stored in browser sessionStorage.
+   This is better than persistent localStorage, but JavaScript can still read it if an XSS vulnerability occurs. Move authentication to HttpOnly, Secure, SameSite cookies or use a Backend-for-Frontend pattern. OWASP specifically recommends avoiding JWT/session-token storage in browser web-storage APIs. OWASP Session Management guidance
+2. No MFA for doctors and admins.
+   Staff accounts should use MFA, especially because they can access patient appointment information and update outcomes. OWASP Authentication guidance
+3. No password reset or account recovery flow.
+   A safe reset process needs one-time, expiring tokens, generic responses, rate limits, and audit logging. OWASP Forgot Password guidance
+4. JWT revocation and rotation are missing.
+   A stolen token remains valid until its expiry. Add refresh-token rotation, logout revocation, key rotation, and forced logout after sensitive account changes.
+5. Local Docker setup is not encrypted.
+   This is acceptable only for development. Production must use HTTPS for users, TLS to PostgreSQL/Redis/Temporal, encrypted backups, secret management, and restricted network access.
+6. Healthcare compliance controls are incomplete.
+   You would still need formal access reviews, data-retention rules, backup recovery tests, security monitoring, penetration testing, vendor agreements, and compliance requirements applicable to your country/organisation.
+Simple verdict:

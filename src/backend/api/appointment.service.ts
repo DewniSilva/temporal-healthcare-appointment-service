@@ -59,6 +59,14 @@ export interface AppointmentListResponse {
   total: number;
 }
 
+const APPOINTMENT_STATUSES = ['REQUESTED', 'RESERVING', 'BOOKED', 'CONFIRMED', 'NO_RESPONSE', 'CANCELLED', 'COMPLETED', 'NO_SHOW', 'REJECTED', 'BOOKING_FAILED'] as const;
+
+export interface AppointmentSummary {
+  total: number;
+  byStatus: Record<(typeof APPOINTMENT_STATUSES)[number], number>;
+  actionRequired: number;
+}
+
 const SIGNAL_BY_ACTION = {
   confirm: confirmAppointment,
   cancel: cancelAppointment,
@@ -136,6 +144,7 @@ export async function listAppointments(query: AppointmentListQuery, user: Authen
   if (query.to) appointmentTime.lte = new Date(query.to);
 
   const now = new Date();
+  const confirmationCutoff = new Date(now.getTime() + getEnv().CONFIRMATION_DEADLINE_HOURS_BEFORE * 60 * 60 * 1_000);
   if (query.view === 'today') {
     const timeZone = getEnv().CLINIC_TIMEZONE;
     const today = utcInstantToZonedDate(now, timeZone);
@@ -151,6 +160,7 @@ export async function listAppointments(query: AppointmentListQuery, user: Authen
   if (query.view === 'action-required') {
     predicates.push({ OR: [
       { status: 'CONFIRMED', appointmentTime: { lt: now } },
+      { status: 'BOOKED', appointmentTime: { lte: confirmationCutoff } },
       { reminders: { some: { status: 'FAILED' } } }
     ] });
   }
@@ -177,11 +187,35 @@ export async function listAppointments(query: AppointmentListQuery, user: Authen
   return {
     items: page.map(({ reminders, ...appointment }) => ({
       ...appointment,
-      actionRequired: (appointment.status === 'CONFIRMED' && appointment.appointmentTime < now) || reminders.length > 0
+      actionRequired: (appointment.status === 'CONFIRMED' && appointment.appointmentTime < now) ||
+        (appointment.status === 'BOOKED' && appointment.appointmentTime <= confirmationCutoff) || reminders.length > 0
     })),
     nextCursor: hasNextPage && page.length > 0 ? encodeCursor(page[page.length - 1].id) : null,
     total
   };
+}
+
+/** Global operational counts are deliberately admin-only: totals can reveal
+ * clinic activity even when individual appointment records are hidden. */
+export async function getAppointmentSummary(user: AuthenticatedUser): Promise<AppointmentSummary> {
+  if (user.role !== 'ADMIN') throw new AppError(403, 'FORBIDDEN', 'Only an admin can view appointment summaries.');
+  const now = new Date();
+  const confirmationCutoff = new Date(now.getTime() + getEnv().CONFIRMATION_DEADLINE_HOURS_BEFORE * 60 * 60 * 1_000);
+  const [groups, actionRequired] = await Promise.all([
+    prisma.appointment.groupBy({ by: ['status'], _count: { _all: true } }),
+    prisma.appointment.count({
+      where: {
+        OR: [
+          { status: 'CONFIRMED', appointmentTime: { lt: now } },
+          { status: 'BOOKED', appointmentTime: { lte: confirmationCutoff } },
+          { reminders: { some: { status: 'FAILED' } } }
+        ]
+      }
+    })
+  ]);
+  const byStatus = Object.fromEntries(APPOINTMENT_STATUSES.map((status) => [status, 0])) as AppointmentSummary['byStatus'];
+  for (const group of groups) byStatus[group.status] = group._count._all;
+  return { total: groups.reduce((sum, group) => sum + group._count._all, 0), byStatus, actionRequired };
 }
 
 export async function getAuthorizedAppointment(id: string, user: AuthenticatedUser) {
